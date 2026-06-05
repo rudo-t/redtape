@@ -600,7 +600,7 @@ class DatabaseAdministratorTrainer:
                 desired_privileges = self.desired.groups[idx].privileges
 
             self.prepare_subject_privileges(
-                group, desired_privileges, privileges, Operation.GRANT
+                group, privileges, desired_privileges, Operation.REVOKE
             )
 
     def prepare_revoke_user_privileges(self):
@@ -621,7 +621,7 @@ class DatabaseAdministratorTrainer:
                 desired_privileges = self.desired.users[idx].privileges
 
             self.prepare_subject_privileges(
-                user, desired_privileges, privileges, Operation.REVOKE
+                user, privileges, desired_privileges, Operation.REVOKE
             )
 
     def prepare_subject_privileges(

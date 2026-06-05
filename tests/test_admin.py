@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from redtape.admin import (
+    DatabaseAdministratorTrainer,
     GroupManagementOperation,
     ManagementOperation,
     OperationDispatch,
@@ -19,6 +20,8 @@ from redtape.specification import (
     Password,
     PasswordType,
     Privilege,
+    Privileges,
+    Specification,
     User,
 )
 
@@ -257,6 +260,66 @@ def test_group_management_operation_invalid(group):
 
     with pytest.raises(ValueError):
         invalid_2.build_query()
+
+
+def test_trainer_revoke_removes_extra_user_privilege():
+    """Trainer should emit REVOKE for privileges in current but not in desired."""
+    priv = Privilege(
+        database_object=DatabaseObject(name="secret_table", type=DatabaseObjectType.TABLE),
+        action=Action.SELECT,
+    )
+    current_user = User(name="alice", is_superuser=False, privileges=Privileges([priv]))
+    desired_user = User(name="alice", is_superuser=False, privileges=Privileges([]))
+
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[desired_user], groups=[]),
+        current_spec=Specification(users=[current_user], groups=[]),
+    )
+    admin = trainer.train()
+
+    revoke_ops = [op for op in admin.ops if op.operation is Operation.REVOKE]
+    assert len(revoke_ops) == 1
+    assert revoke_ops[0].privilege == priv
+    assert revoke_ops[0].subject.name == "alice"
+
+
+def test_trainer_revoke_removes_extra_group_privilege():
+    """Trainer should emit REVOKE for group privileges in current but not in desired."""
+    priv = Privilege(
+        database_object=DatabaseObject(name="secret_table", type=DatabaseObjectType.TABLE),
+        action=Action.SELECT,
+    )
+    current_group = Group(name="analysts", privileges=Privileges([priv]))
+    desired_group = Group(name="analysts", privileges=Privileges([]))
+
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[], groups=[desired_group]),
+        current_spec=Specification(users=[], groups=[current_group]),
+    )
+    admin = trainer.train()
+
+    revoke_ops = [op for op in admin.ops if op.operation is Operation.REVOKE]
+    assert len(revoke_ops) == 1
+    assert revoke_ops[0].privilege == priv
+    assert revoke_ops[0].subject.name == "analysts"
+
+
+def test_trainer_no_revoke_for_desired_privilege():
+    """Trainer should NOT emit REVOKE for privileges that are in the desired spec."""
+    priv = Privilege(
+        database_object=DatabaseObject(name="allowed_table", type=DatabaseObjectType.TABLE),
+        action=Action.SELECT,
+    )
+    user = User(name="alice", is_superuser=False, privileges=Privileges([priv]))
+
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[user], groups=[]),
+        current_spec=Specification(users=[user], groups=[]),
+    )
+    admin = trainer.train()
+
+    revoke_ops = [op for op in admin.ops if op.operation is Operation.REVOKE]
+    assert len(revoke_ops) == 0
 
 
 def test_operation_dispatch():
