@@ -241,6 +241,76 @@ def test_group_management_operation_grant_with_wildcard(group):
     assert result == expected
 
 
+def test_user_management_operation_revoke(user, select_privilege):
+    """Test the build_query method for a revoke operation on a user."""
+    op = UserManagementOperation(
+        operation=Operation.REVOKE,
+        subject=user,
+        privilege=select_privilege,
+    )
+
+    result = op.build_query()
+    expected = "REVOKE SELECT ON TABLE one_table FROM test_user_1;"
+
+    assert result == expected
+
+
+def test_user_management_operation_revoke_with_wildcard(user):
+    """Test the build_query method for a revoke operation with a wildcard."""
+    priv = Privilege(
+        database_object=DatabaseObject(
+            name="my_db.my_schema.*", type=DatabaseObjectType.TABLE
+        ),
+        action=Action.SELECT,
+    )
+
+    op = UserManagementOperation(
+        operation=Operation.REVOKE,
+        subject=user,
+        privilege=priv,
+    )
+
+    result = op.build_query()
+    expected = "REVOKE SELECT ON ALL TABLES IN SCHEMA my_db.my_schema FROM test_user_1;"
+
+    assert result == expected
+
+
+def test_group_management_operation_revoke(group, select_privilege):
+    """Test the build_query method for a revoke operation on a group."""
+    op = GroupManagementOperation(
+        operation=Operation.REVOKE,
+        subject=group,
+        privilege=select_privilege,
+    )
+
+    result = op.build_query()
+    expected = "REVOKE SELECT ON TABLE one_table FROM a_user_group_1;"
+
+    assert result == expected
+
+
+def test_group_management_operation_revoke_with_wildcard(group):
+    """Test the build_query method for a revoke operation with a wildcard."""
+    priv = Privilege(
+        database_object=DatabaseObject(
+            name="my_db.my_schema.*", type=DatabaseObjectType.TABLE
+        ),
+        action=Action.SELECT,
+    )
+
+    op = GroupManagementOperation(
+        operation=Operation.REVOKE,
+        subject=group,
+        privilege=priv,
+    )
+
+    result = op.build_query()
+    expected = "REVOKE SELECT ON ALL TABLES IN SCHEMA my_db.my_schema FROM a_user_group_1;"
+
+    assert result == expected
+
+
 def test_group_management_operation_invalid(group):
     """Test the build_query method for an invalid Group operation."""
     invalid_1 = GroupManagementOperation(

@@ -221,6 +221,39 @@ class UserManagementOperation(ManagementOperation):
             f"{_type.name} {self.privilege.database_object.name} TO {self.subject.name};"
         )
 
+    @build_query.register(Operation.REVOKE)
+    def build_revoke_query(self) -> str:
+        if self.privilege is None:
+            raise TypeError(
+                f"{self.operation} requires a Privilege but {type(self.privilege)} was provided."
+            )
+
+        db_obj = self.privilege.database_object
+        support_on_all_query = (
+            DatabaseObjectType.TABLE,
+            DatabaseObjectType.VIEW,
+            DatabaseObjectType.FUNCTION,
+            DatabaseObjectType.PROCEDURE,
+        )
+        _type = (
+            db_obj._type
+            if db_obj._type is not DatabaseObjectType.VIEW
+            else DatabaseObjectType.TABLE
+        )
+
+        if any((db_obj.has_wildcard_part(t) for t in support_on_all_query)):
+            db, schema, _ = db_obj.parts
+            return (
+                f"REVOKE {self.privilege.action.name} ON ALL "
+                f"{_type.name + 'S'} IN SCHEMA "
+                f"{db.name}.{schema.name} FROM {self.subject.name};"
+            )
+
+        return (
+            f"REVOKE {self.privilege.action.name} ON "
+            f"{_type.name} {self.privilege.database_object.name} FROM {self.subject.name};"
+        )
+
     @build_query.register(Operation.DROP_FROM_GROUP)
     @build_query.register(Operation.ADD_TO_GROUP)
     def build_group_queries(self) -> str:
@@ -295,6 +328,39 @@ class GroupManagementOperation(ManagementOperation):
         return (
             f"GRANT {self.privilege.action.name} ON "
             f"{_type.name} {self.privilege.database_object.name} TO {self.subject.name};"
+        )
+
+    @build_query.register(Operation.REVOKE)
+    def build_revoke_query(self) -> str:
+        if self.privilege is None:
+            raise TypeError(
+                f"{self.operation} requires a Privilege but {type(self.privilege)} was provided."
+            )
+
+        db_obj = self.privilege.database_object
+        support_on_all_query = (
+            DatabaseObjectType.TABLE,
+            DatabaseObjectType.VIEW,
+            DatabaseObjectType.FUNCTION,
+            DatabaseObjectType.PROCEDURE,
+        )
+        _type = (
+            db_obj._type
+            if db_obj._type is not DatabaseObjectType.VIEW
+            else DatabaseObjectType.TABLE
+        )
+
+        if any((db_obj.has_wildcard_part(t) for t in support_on_all_query)):
+            db, schema, _ = db_obj.parts
+            return (
+                f"REVOKE {self.privilege.action.name} ON ALL "
+                f"{_type.name + 'S'} IN SCHEMA "
+                f"{db.name}.{schema.name} FROM {self.subject.name};"
+            )
+
+        return (
+            f"REVOKE {self.privilege.action.name} ON "
+            f"{_type.name} {self.privilege.database_object.name} FROM {self.subject.name};"
         )
 
 
