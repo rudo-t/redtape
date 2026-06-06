@@ -14,11 +14,13 @@ import psycopg2
 
 from redtape.connectors import RedshiftConnector
 from redtape.specification import (
+    Action,
     DatabaseObject,
     DatabaseObjectType,
     Group,
     Operation,
     Privilege,
+    Privileges,
     Specification,
     User,
 )
@@ -624,6 +626,33 @@ class DatabaseAdministratorTrainer:
                 user, privileges, desired_privileges, Operation.REVOKE
             )
 
+    def _expand_schema_wildcards(self, privileges) -> list:
+        """Expand wildcard schema privileges (e.g. mydb.*) to per-schema privileges.
+
+        Uses schema_names from the current spec, which is populated when the spec
+        is built from a live connector. Wildcards in a YAML-only spec with no
+        connector-derived current spec are left unexpanded.
+        """
+        expanded = []
+        for privilege in privileges:
+            db_obj = privilege.database_object
+            if (
+                db_obj._type is DatabaseObjectType.SCHEMA
+                and db_obj.has_wildcard_part(DatabaseObjectType.SCHEMA)
+            ):
+                db_part, _, _ = db_obj.parts
+                db_name = db_part.name
+                for schema_name in self.current.schema_names.get(db_name, []):
+                    new_obj = DatabaseObject.from_parts(
+                        db_name, schema_name, type=DatabaseObjectType.SCHEMA
+                    )
+                    expanded.append(
+                        Privilege(database_object=new_obj, action=privilege.action)
+                    )
+            else:
+                expanded.append(privilege)
+        return expanded
+
     def prepare_subject_privileges(
         self,
         subject: Union[User, Group],
@@ -641,8 +670,11 @@ class DatabaseAdministratorTrainer:
         else:
             action_cls = GroupManagementOperation
 
-        for privilege in desired_privileges:
-            if privilege in current_privileges:
+        expanded_desired = self._expand_schema_wildcards(desired_privileges or [])
+        expanded_current = self._expand_schema_wildcards(current_privileges or [])
+
+        for privilege in expanded_desired:
+            if privilege in expanded_current:
                 continue
 
             self._management_ops.append(

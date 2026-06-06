@@ -322,6 +322,83 @@ def test_trainer_no_revoke_for_desired_privilege():
     assert len(revoke_ops) == 0
 
 
+def test_schema_wildcard_grant_expands_to_all_schemas():
+    """A wildcard schema privilege in the desired spec expands to individual schemas."""
+    wildcard_priv = Privilege(
+        database_object=DatabaseObject(name="mydb.*", type=DatabaseObjectType.SCHEMA),
+        action=Action.USAGE,
+    )
+    user = User(name="alice", is_superuser=False, privileges=Privileges([wildcard_priv]))
+
+    current_spec = Specification(
+        users=[User(name="alice", is_superuser=False, privileges=Privileges([]))],
+        groups=[],
+        schema_names={"mydb": ["public", "analytics", "raw"]},
+    )
+
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[user], groups=[]),
+        current_spec=current_spec,
+    )
+    admin = trainer.train()
+
+    grant_ops = [op for op in admin.ops if op.operation is Operation.GRANT]
+    granted_names = {op.privilege.database_object.name for op in grant_ops}
+
+    assert granted_names == {"mydb.public", "mydb.analytics", "mydb.raw"}
+
+
+def test_schema_wildcard_revoke_removes_all_schemas():
+    """Removing a wildcard schema privilege revokes each individual schema."""
+    public_priv = Privilege(
+        database_object=DatabaseObject(name="mydb.public", type=DatabaseObjectType.SCHEMA),
+        action=Action.USAGE,
+    )
+    analytics_priv = Privilege(
+        database_object=DatabaseObject(name="mydb.analytics", type=DatabaseObjectType.SCHEMA),
+        action=Action.USAGE,
+    )
+    current_user = User(
+        name="alice",
+        is_superuser=False,
+        privileges=Privileges([public_priv, analytics_priv]),
+    )
+    desired_user = User(name="alice", is_superuser=False, privileges=Privileges([]))
+
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[desired_user], groups=[]),
+        current_spec=Specification(
+            users=[current_user],
+            groups=[],
+            schema_names={"mydb": ["public", "analytics"]},
+        ),
+    )
+    admin = trainer.train()
+
+    revoke_ops = [op for op in admin.ops if op.operation is Operation.REVOKE]
+    revoked_names = {op.privilege.database_object.name for op in revoke_ops}
+
+    assert revoked_names == {"mydb.public", "mydb.analytics"}
+
+
+def test_schema_wildcard_no_expand_without_schema_names():
+    """Wildcard schema with no schema_names in current spec passes through unexpanded."""
+    wildcard_priv = Privilege(
+        database_object=DatabaseObject(name="mydb.*", type=DatabaseObjectType.SCHEMA),
+        action=Action.USAGE,
+    )
+    user = User(name="alice", is_superuser=False, privileges=Privileges([wildcard_priv]))
+
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[user], groups=[]),
+        current_spec=Specification(users=[user], groups=[]),
+    )
+    admin = trainer.train()
+
+    grant_ops = [op for op in admin.ops if op.operation is Operation.GRANT]
+    assert len(grant_ops) == 0
+
+
 def test_operation_dispatch():
     class FakeManagementOperation(ManagementOperation):
         dispatch = OperationDispatch()
