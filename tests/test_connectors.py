@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import redtape.connectors as db
 from redtape.connectors import parse_acl
 
 
@@ -47,3 +48,25 @@ def test_parse_acl():
         ("user4", "user", "C"),
     ]
     assert result_3 == expected_3
+
+
+def test_parse_acl_none():
+    """parse_acl with None yields nothing without raising."""
+    assert list(parse_acl(None)) == []
+
+
+def test_parse_acl_empty_string():
+    """parse_acl with an empty string yields nothing."""
+    assert list(parse_acl("")) == []
+
+
+def test_group_iter_group_members_none():
+    """iter_group_members yields nothing when grolist is None."""
+    group = db.Group(groname="empty", grosysid=1, grolist=None)
+    assert list(group.iter_group_members()) == []
+
+
+def test_group_iter_group_members_populated():
+    """iter_group_members yields each user id in order."""
+    group = db.Group(groname="members", grosysid=2, grolist=[100, 101, 102])
+    assert list(group.iter_group_members()) == [100, 101, 102]

@@ -17,6 +17,7 @@ from redtape.specification import (
     DatabaseObjectType,
     Group,
     Operation,
+    Ownerships,
     Password,
     PasswordType,
     Privilege,
@@ -439,3 +440,174 @@ def test_operation_dispatch():
     )
     assert "GRANT" == FakeManagementOperation(Operation.GRANT).dispatch()
     assert "ALTER_OWNER" == FakeManagementOperation(Operation.ALTER_OWNER).dispatch()
+
+
+def test_user_management_operation_create_no_password():
+    """CREATE user with no password raises TypeError."""
+    passwordless_user = User(name="bob", is_superuser=False)
+    op = UserManagementOperation(
+        operation=Operation.CREATE,
+        subject=passwordless_user,
+    )
+    with pytest.raises(TypeError):
+        op.build_query()
+
+
+def test_user_management_operation_alter_owner(user):
+    """ALTER_OWNER builds an ALTER ... OWNER TO query."""
+    db_obj = DatabaseObject(name="my_schema.my_table", type=DatabaseObjectType.TABLE)
+    op = UserManagementOperation(
+        operation=Operation.ALTER_OWNER,
+        subject=user,
+        database_object=db_obj,
+    )
+    result = op.build_query()
+    assert "my_schema.my_table" in result
+    assert "test_user_1" in result
+    assert "OWNER TO" in result
+    assert result.startswith("ALTER")
+
+
+def test_user_management_operation_alter_owner_no_db_object(user):
+    """ALTER_OWNER with no database_object raises TypeError."""
+    op = UserManagementOperation(
+        operation=Operation.ALTER_OWNER,
+        subject=user,
+    )
+    with pytest.raises(TypeError):
+        op.build_query()
+
+
+def test_trainer_creates_new_user():
+    """Trainer emits CREATE for a user present in desired but absent from current."""
+    desired_user = User(
+        name="new_user",
+        is_superuser=False,
+        password=Password(type=PasswordType.PLAIN, value="Secret123", salt=None),
+    )
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[desired_user], groups=[]),
+        current_spec=Specification(users=[], groups=[]),
+    )
+    admin = trainer.train()
+    create_ops = [op for op in admin.ops if op.operation is Operation.CREATE]
+    assert len(create_ops) == 1
+    assert create_ops[0].subject.name == "new_user"
+
+
+def test_trainer_creates_new_group():
+    """Trainer emits CREATE for a group present in desired but absent from current."""
+    desired_group = Group(name="new_group")
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[], groups=[desired_group]),
+        current_spec=Specification(users=[], groups=[]),
+    )
+    admin = trainer.train()
+    create_ops = [op for op in admin.ops if op.operation is Operation.CREATE]
+    assert len(create_ops) == 1
+    assert create_ops[0].subject.name == "new_group"
+
+
+def test_trainer_drops_user():
+    """Trainer emits DROP for a user present in current but absent from desired."""
+    current_user = User(name="old_user", is_superuser=False)
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[], groups=[]),
+        current_spec=Specification(users=[current_user], groups=[]),
+    )
+    admin = trainer.train()
+    drop_ops = [op for op in admin.ops if op.operation is Operation.DROP]
+    assert len(drop_ops) == 1
+    assert drop_ops[0].subject.name == "old_user"
+
+
+def test_trainer_drops_group():
+    """Trainer emits DROP for a group present in current but absent from desired."""
+    current_group = Group(name="old_group")
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[], groups=[]),
+        current_spec=Specification(users=[], groups=[current_group]),
+    )
+    admin = trainer.train()
+    drop_ops = [op for op in admin.ops if op.operation is Operation.DROP]
+    assert len(drop_ops) == 1
+    assert drop_ops[0].subject.name == "old_group"
+
+
+def test_trainer_add_to_group():
+    """Trainer emits ADD_TO_GROUP when a user is newly assigned to a group."""
+    analysts = Group(name="analysts")
+    current_user = User(name="alice", is_superuser=False, member_of=None)
+    desired_user = User(name="alice", is_superuser=False, member_of={"analysts"})
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[desired_user], groups=[analysts]),
+        current_spec=Specification(users=[current_user], groups=[]),
+    )
+    admin = trainer.train()
+    add_ops = [op for op in admin.ops if op.operation is Operation.ADD_TO_GROUP]
+    assert len(add_ops) == 1
+    assert add_ops[0].subject.name == "alice"
+    assert add_ops[0].group.name == "analysts"
+
+
+def test_trainer_drop_from_group():
+    """Trainer emits DROP_FROM_GROUP when a user is removed from a group."""
+    analysts = Group(name="analysts")
+    current_user = User(name="alice", is_superuser=False, member_of={"analysts"})
+    desired_user = User(name="alice", is_superuser=False, member_of=set())
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[desired_user], groups=[]),
+        current_spec=Specification(users=[current_user], groups=[analysts]),
+    )
+    admin = trainer.train()
+    drop_ops = [op for op in admin.ops if op.operation is Operation.DROP_FROM_GROUP]
+    assert len(drop_ops) == 1
+    assert drop_ops[0].subject.name == "alice"
+    assert drop_ops[0].group.name == "analysts"
+
+
+def test_trainer_alter_ownership():
+    """Trainer emits ALTER_OWNER for every object in a user's owns list."""
+    db_obj = DatabaseObject(name="my_schema.my_table", type=DatabaseObjectType.TABLE)
+    desired_user = User(
+        name="alice",
+        is_superuser=False,
+        owns=Ownerships([db_obj]),
+    )
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[desired_user], groups=[]),
+        current_spec=Specification(users=[], groups=[]),
+    )
+    admin = trainer.train()
+    alter_ops = [op for op in admin.ops if op.operation is Operation.ALTER_OWNER]
+    assert len(alter_ops) == 1
+    assert alter_ops[0].database_object == db_obj
+    assert alter_ops[0].subject.name == "alice"
+
+
+def test_trainer_filter_operations_suppresses_grant():
+    """filter_operations returning False for GRANT suppresses all GRANT operations."""
+    priv = Privilege(
+        database_object=DatabaseObject(name="my_table", type=DatabaseObjectType.TABLE),
+        action=Action.SELECT,
+    )
+    desired_user = User(name="alice", is_superuser=False, privileges=Privileges([priv]))
+    current_user = User(name="alice", is_superuser=False, privileges=Privileges([]))
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[desired_user], groups=[]),
+        current_spec=Specification(users=[current_user], groups=[]),
+        filter_operations=lambda op: op is Operation.REVOKE,
+    )
+    admin = trainer.train()
+    grant_ops = [op for op in admin.ops if op.operation is Operation.GRANT]
+    assert len(grant_ops) == 0
+
+
+def test_prepare_subject_privileges_invalid_operation(user):
+    """prepare_subject_privileges raises TypeError for non-GRANT/REVOKE operations."""
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[user], groups=[]),
+        current_spec=Specification(users=[], groups=[]),
+    )
+    with pytest.raises(TypeError):
+        trainer.prepare_subject_privileges(user, [], [], Operation.CREATE)
