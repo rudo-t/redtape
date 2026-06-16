@@ -24,7 +24,7 @@ python -m pip install redtape-py
 
 ## Usage
 
-Once installed, `redtape` is available on your `PATH`. When working from a checkout without installing, prefix any command with `uv run` (e.g. `uv run redtape validate spec.yaml`).
+Once installed, `redtape` is available on your `PATH`. When working from a checkout without installing, prefix any command with `uv run` (e.g. `uv run redtape validate examples/spec.yaml`).
 
 `redtape` exposes three commands:
 
@@ -38,10 +38,10 @@ Run `redtape <command> --help` for the full option list.
 
 ### Quick start (no database)
 
-`validate` checks a specification file offline — the fastest way to confirm your install works:
+`validate` checks a specification file offline — the fastest way to confirm your install works. A ready-to-run sample lives at [`examples/spec.yaml`](examples/spec.yaml):
 
 ```sh
-redtape validate spec.yaml
+redtape validate examples/spec.yaml
 # Specification loaded!
 # Validation successful!
 ```
@@ -66,9 +66,9 @@ redtape validate spec.yaml
 Apply a specification (use `--dry` first to print the SQL without executing it):
 
 ```sh
-redtape run --dry spec.yaml   # print the GRANT/CREATE/REVOKE statements only
-redtape run spec.yaml         # apply them
-redtape export                # dump the live database state as a spec
+redtape run --dry examples/spec.yaml   # print the GRANT/CREATE/REVOKE statements only
+redtape run examples/spec.yaml         # apply them
+redtape export                         # dump the live database state as a spec
 ```
 
 ### Trying it locally with Docker
@@ -84,7 +84,7 @@ export REDTAPE_REDSHIFT_DBNAME=test_db
 export REDTAPE_REDSHIFT_USER=test_admin
 export REDTAPE_REDSHIFT_PASSWORD=TestPassword1
 
-redtape run --dry spec.yaml
+redtape run --dry examples/spec.yaml
 ```
 
 ### `redtape run` options

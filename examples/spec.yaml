@@ -1,0 +1,64 @@
+# Example redtape specification.
+#
+# Describes the DESIRED state of groups, users, and their privileges. Run:
+#
+#   redtape validate examples/spec.yaml      # offline: check this file is valid
+#   redtape run --dry  examples/spec.yaml    # print the SQL needed to reach this state
+#   redtape run        examples/spec.yaml    # apply it
+#
+# Privileges are grouped by database-object type (table, schema, database,
+# function, procedure, language), then by action. Object names may use
+# wildcards in the form `database.schema.object` — e.g. `analytics.*.*` for
+# every table in every schema of the `analytics` database.
+
+groups:
+  - name: analysts
+    privileges:
+      schema:
+        usage:
+          - analytics.public
+      table:
+        select:
+          # Every table in every schema of the analytics database.
+          - analytics.*.*
+
+  - name: engineers
+    privileges:
+      schema:
+        usage:
+          - analytics.public
+        create:
+          - analytics.public
+      table:
+        select:
+          - analytics.public.events
+        insert:
+          - analytics.public.events
+        update:
+          - analytics.public.events
+      database:
+        temporary:
+          - analytics
+
+users:
+  - name: alice
+    is_superuser: false
+    member_of:
+      - analysts
+    password:
+      type: plain
+      value: ChangeMe123!
+
+  - name: bob
+    is_superuser: false
+    member_of:
+      - engineers
+    password:
+      type: plain
+      value: ChangeMe456!
+    privileges:
+      # Privileges can also be granted directly to a user, in addition to any
+      # inherited from the groups listed in `member_of`.
+      table:
+        select:
+          - analytics.public.audit_log
