@@ -5,3 +5,4 @@ __mypy_cache__/
 .mypy_cache__/
 .env
 .redtape.ini
+.DS_Store
