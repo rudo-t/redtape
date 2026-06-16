@@ -6,12 +6,12 @@ A permission management tool for AWS Redshift, with plans to extend it to other 
 
 ### Repo
 
-Clone this repo and install with `poetry`:
+Clone this repo and install with `uv`:
 
 ```sh
 git clone git@github.com:tomasfarias/redtape.git redtape
 cd redtape
-poetry install
+uv sync --group dev
 ```
 
 ### PyPI

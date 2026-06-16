@@ -1,51 +1,55 @@
-[tool.poetry]
+[project]
 name = "redtape-py"
 version = "0.4.2"
 description = "A permission management tool for AWS Redshift."
-authors = ["Tomás Farías Santana <tomas@tomasfarias.dev>"]
-license = "MIT"
 readme = "README.md"
-keywords = ["redshift", "database", "privileges"]
-
-packages = [
-  { include = "redtape" },
+license = {text = "MIT"}
+requires-python = ">=3.12"
+dependencies = [
+    "PyYAML>=6.0",
+    "rich>=13.7",
+    "psycopg2-binary>=2.9.3",
+    "typer>=0.9",
+    "attrs>=23.2",
+    "cattrs>=23.2",
+    "environ-config>=23.2",
+    "aenum>=3.1",
 ]
 
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Topic :: Database",
-]
-
-[tool.poetry.dependencies]
-python = "^3.10"
-PyYAML = "^6.0"
-rich = "^13.7"
-psycopg2-binary = "^2.9.3"
-typer = "^0.9"
-attrs = "^23.2"
-cattrs = "^23.2"
-environ-config = "^23.2"
-aenum = "^3.1"
-
-[tool.poetry.dev-dependencies]
-black = "^24.3"
-flake8 = "^7.0"
-isort = "^5.13"
-mypy = "^1.9"
-pytest = "^8.1"
-pre-commit = "^3.6"
-pytest-cov = "^4.1"
-
-[tool.poetry.scripts]
+[project.scripts]
 redtape = "redtape.cli:main"
 
+# Exposed as a pip "extra" so `pip install -e ".[dev]"` works (used by ralph
+# inside Docker). Mirrored by the [dependency-groups] table below, which is
+# what `uv sync --group dev` reads.
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.1",
+    "pytest-cov>=4.1",
+    "black>=24.3",
+    "flake8>=7.0",
+    "isort>=5.13",
+    "mypy>=1.9",
+    "pre-commit>=3.6",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.1",
+    "pytest-cov>=4.1",
+    "black>=24.3",
+    "flake8>=7.0",
+    "isort>=5.13",
+    "mypy>=1.9",
+    "pre-commit>=3.6",
+]
+
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["redtape"]
 
 [tool.black]
 line-length = 88
