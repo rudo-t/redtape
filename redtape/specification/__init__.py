@@ -139,9 +139,12 @@ def add_method(cls_list: list[T], mod=None):
     return decorator
 
 
-def filter_none(_, value) -> bool:
-    """Filter that checks for None."""
-    return value is not None
+_INTERNAL_FIELDS = frozenset({"schema_names"})
+
+
+def filter_none(attr, value) -> bool:
+    """Filter that checks for None and skips internal fields."""
+    return value is not None and attr.name not in _INTERNAL_FIELDS
 
 
 @add_method([Specification, User, Group])
@@ -233,6 +236,15 @@ _converter.register_unstructure_hook(
         User,
         _converter,
         _cattrs_omit_if_default=True,
+    ),
+)
+_converter.register_unstructure_hook(
+    Specification,
+    cattrs.gen.make_dict_unstructure_fn(
+        Specification,
+        _converter,
+        _cattrs_omit_if_default=True,
+        schema_names=cattrs.gen.override(omit=True),
     ),
 )
 

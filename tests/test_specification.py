@@ -703,6 +703,288 @@ def test_specification_from_redshift_connector_groups_created():
     assert groups == {"prod_analytics", "consumer_analytics", "everyone"}
 
 
+def test_database_object_from_parts_one_arg():
+    """from_parts with one arg builds a single-segment name."""
+    db_obj = DatabaseObject.from_parts("mydb", type=DatabaseObjectType.DATABASE)
+    assert db_obj.name == "mydb"
+    assert db_obj._type == DatabaseObjectType.DATABASE
+
+
+def test_database_object_from_parts_two_args():
+    """from_parts with two args joins them with a dot."""
+    db_obj = DatabaseObject.from_parts("mydb", "my_schema", type=DatabaseObjectType.SCHEMA)
+    assert db_obj.name == "mydb.my_schema"
+    assert db_obj._type == DatabaseObjectType.SCHEMA
+
+
+def test_database_object_from_parts_three_args():
+    """from_parts with three args builds a fully-qualified name."""
+    db_obj = DatabaseObject.from_parts("mydb", "my_schema", "my_table", type=DatabaseObjectType.TABLE)
+    assert db_obj.name == "mydb.my_schema.my_table"
+    assert db_obj._type == DatabaseObjectType.TABLE
+
+
+def test_database_object_parts_one_level():
+    """parts returns (db, None, None) for a single-segment name."""
+    db_obj = DatabaseObject(name="mydb", type=DatabaseObjectType.DATABASE)
+    db_part, schema_part, obj_part = db_obj.parts
+    assert db_part == DatabaseObject("mydb", DatabaseObjectType.DATABASE)
+    assert schema_part is None
+    assert obj_part is None
+
+
+def test_database_object_parts_two_levels():
+    """parts returns (db, schema, None) for a two-segment name."""
+    db_obj = DatabaseObject(name="mydb.my_schema", type=DatabaseObjectType.SCHEMA)
+    db_part, schema_part, obj_part = db_obj.parts
+    assert db_part == DatabaseObject("mydb", DatabaseObjectType.DATABASE)
+    assert schema_part == DatabaseObject("my_schema", DatabaseObjectType.SCHEMA)
+    assert obj_part is None
+
+
+def test_database_object_parts_three_levels():
+    """parts returns (db, schema, table) for a three-segment name."""
+    db_obj = DatabaseObject(name="mydb.my_schema.my_table", type=DatabaseObjectType.TABLE)
+    db_part, schema_part, obj_part = db_obj.parts
+    assert db_part == DatabaseObject("mydb", DatabaseObjectType.DATABASE)
+    assert schema_part == DatabaseObject("my_schema", DatabaseObjectType.SCHEMA)
+    assert obj_part == DatabaseObject("my_table", DatabaseObjectType.TABLE)
+
+
+def test_database_object_is_wildcard():
+    """is_wildcard returns True only for the bare '*' name."""
+    assert DatabaseObject(name="*", type=DatabaseObjectType.TABLE).is_wildcard() is True
+    assert DatabaseObject(name="my_table", type=DatabaseObjectType.TABLE).is_wildcard() is False
+
+
+def test_database_object_has_wildcard_part():
+    """has_wildcard_part detects wildcards at the correct segment level."""
+    table_wildcard = DatabaseObject(name="mydb.my_schema.*", type=DatabaseObjectType.TABLE)
+    assert table_wildcard.has_wildcard_part(DatabaseObjectType.TABLE) is True
+    assert table_wildcard.has_wildcard_part(DatabaseObjectType.SCHEMA) is False
+    assert table_wildcard.has_wildcard_part(DatabaseObjectType.DATABASE) is False
+
+    schema_wildcard = DatabaseObject(name="mydb.*", type=DatabaseObjectType.SCHEMA)
+    assert schema_wildcard.has_wildcard_part(DatabaseObjectType.SCHEMA) is True
+    assert schema_wildcard.has_wildcard_part(DatabaseObjectType.DATABASE) is False
+
+
+def test_privilege_validate_supported_action():
+    """validate returns (True, None) when the action is supported by the object type."""
+    priv = Privilege(
+        database_object=DatabaseObject(name="my_table", type=DatabaseObjectType.TABLE),
+        action=Action.SELECT,
+    )
+    success, failures = priv.validate()
+    assert success is True
+    assert failures is None
+
+
+def test_privilege_validate_unsupported_action():
+    """validate returns (False, [failure]) when the action is not supported."""
+    priv = Privilege(
+        database_object=DatabaseObject(name="my_db", type=DatabaseObjectType.DATABASE),
+        action=Action.SELECT,
+    )
+    success, failures = priv.validate()
+    assert success is False
+    assert failures is not None and len(failures) == 1
+
+
+def test_password_str_plain():
+    pw = Password(type=PasswordType.PLAIN, value="MySecret1", salt=None)
+    assert str(pw) == "MySecret1"
+
+
+def test_password_str_md5():
+    pw = Password(type=PasswordType.MD5, value="abc123hash", salt=None)
+    assert str(pw) == "md5abc123hash"
+
+
+def test_password_str_sha256():
+    pw = Password(type=PasswordType.SHA256, value="deadbeef", salt=None)
+    assert str(pw) == "sha256|deadbeef"
+
+
+def test_password_str_disabled():
+    pw = Password(type=PasswordType.DISABLED)
+    assert str(pw) == "DISABLED"
+
+
+def test_password_validate_valid():
+    pw = Password(type=PasswordType.PLAIN, value="Secret123", salt=None)
+    success, failures = pw.validate()
+    assert success is True
+    assert failures is None
+
+
+def test_password_validate_too_short():
+    """PLAIN password shorter than 8 chars fails validation."""
+    pw = Password(type=PasswordType.PLAIN, value="Sh0rt", salt=None)
+    success, failures = pw.validate()
+    assert success is False
+    assert failures is not None
+
+
+def test_password_validate_no_uppercase():
+    """PLAIN password with no uppercase char fails validation."""
+    pw = Password(type=PasswordType.PLAIN, value="secret1234", salt=None)
+    success, failures = pw.validate()
+    assert success is False
+    assert any("uppercase" in f.message for f in failures)
+
+
+def test_password_validate_no_lowercase():
+    """PLAIN password with no lowercase char fails validation."""
+    pw = Password(type=PasswordType.PLAIN, value="SECRET1234", salt=None)
+    success, failures = pw.validate()
+    assert success is False
+    assert any("lowercase" in f.message for f in failures)
+
+
+def test_password_validate_no_digit():
+    """PLAIN password with no digit fails validation."""
+    pw = Password(type=PasswordType.PLAIN, value="Secretsecret", salt=None)
+    success, failures = pw.validate()
+    assert success is False
+    assert any("digit" in f.message for f in failures)
+
+
+def test_user_add_privilege_creates_set():
+    """add_privilege creates a Privileges set when privileges is None."""
+    user = User(name="alice", is_superuser=False)
+    priv = Privilege(
+        database_object=DatabaseObject(name="my_table", type=DatabaseObjectType.TABLE),
+        action=Action.SELECT,
+    )
+    assert user.privileges is None
+    user.add_privilege(priv)
+    assert user.privileges == Privileges([priv])
+
+
+def test_user_add_privilege_extends_existing():
+    """add_privilege appends to an existing Privileges set."""
+    priv1 = Privilege(
+        database_object=DatabaseObject(name="table_a", type=DatabaseObjectType.TABLE),
+        action=Action.SELECT,
+    )
+    priv2 = Privilege(
+        database_object=DatabaseObject(name="table_b", type=DatabaseObjectType.TABLE),
+        action=Action.INSERT,
+    )
+    user = User(name="alice", is_superuser=False, privileges=Privileges([priv1]))
+    user.add_privilege(priv2)
+    assert user.privileges == Privileges([priv1, priv2])
+
+
+def test_user_add_owned_db_object():
+    """add_owned_db_object creates Ownerships when owns is None, then extends it."""
+    user = User(name="alice", is_superuser=False)
+    db_obj = DatabaseObject(name="my_table", type=DatabaseObjectType.TABLE)
+    assert user.owns is None
+    user.add_owned_db_object(db_obj)
+    assert user.owns == Ownerships([db_obj])
+    db_obj2 = DatabaseObject(name="my_schema", type=DatabaseObjectType.SCHEMA)
+    user.add_owned_db_object(db_obj2)
+    assert db_obj2 in user.owns
+
+
+def test_user_validate_invalid_privilege():
+    """User.validate propagates privilege validation failures."""
+    priv = Privilege(
+        database_object=DatabaseObject(name="my_db", type=DatabaseObjectType.DATABASE),
+        action=Action.SELECT,
+    )
+    user = User(name="alice", is_superuser=False, privileges=Privileges([priv]))
+    success, failures = user.validate()
+    assert success is False
+    assert failures is not None and len(failures) == 1
+
+
+def test_user_validate_invalid_password():
+    """User.validate propagates password validation failures."""
+    pw = Password(type=PasswordType.PLAIN, value="weak", salt=None)
+    user = User(name="alice", is_superuser=False, privileges=Privileges([]), password=pw)
+    success, failures = user.validate()
+    assert success is False
+    assert failures is not None
+
+
+def test_group_add_privilege_creates_set():
+    """Group.add_privilege creates a Privileges set when privileges is None."""
+    group = Group(name="analysts")
+    priv = Privilege(
+        database_object=DatabaseObject(name="my_schema", type=DatabaseObjectType.SCHEMA),
+        action=Action.USAGE,
+    )
+    assert group.privileges is None
+    group.add_privilege(priv)
+    assert group.privileges == Privileges([priv])
+
+
+def test_group_validate_invalid_privilege():
+    """Group.validate propagates privilege validation failures."""
+    priv = Privilege(
+        database_object=DatabaseObject(name="my_db", type=DatabaseObjectType.DATABASE),
+        action=Action.SELECT,
+    )
+    group = Group(name="analysts", privileges=Privileges([priv]))
+    success, failures = group.validate()
+    assert success is False
+    assert failures is not None and len(failures) == 1
+
+
+def test_specification_from_yaml_file(spec_file):
+    """Specification.from_yaml_file loads from a path object."""
+    spec = Specification.from_yaml_file(spec_file)
+    assert len(spec.users) == 1
+    assert spec.users[0].name == "test_user_1"
+
+
+def test_specification_roundtrip_yaml():
+    """A Specification serialised to YAML and back is equivalent."""
+    user = User(name="alice", is_superuser=False)
+    spec = Specification(users=[user], groups=[])
+    restored = Specification.from_yaml(spec.to_yaml())
+    assert len(restored.users) == 1
+    assert restored.users[0].name == "alice"
+
+
+def test_specification_roundtrip_json():
+    """A Specification serialised to JSON and back is equivalent."""
+    user = User(name="alice", is_superuser=False)
+    spec = Specification(users=[user], groups=[])
+    restored = Specification.from_json(spec.to_json())
+    assert len(restored.users) == 1
+    assert restored.users[0].name == "alice"
+
+
+def test_specification_validate_user_in_missing_group():
+    """validate fails when a user references a group not declared in the spec."""
+    user = User(name="alice", is_superuser=False, member_of={"ghost_group"})
+    spec = Specification(users=[user], groups=[])
+    success, failures = spec.validate()
+    assert success is False
+    assert failures is not None and len(failures) >= 1
+
+
+def test_specification_schema_names_not_in_yaml():
+    """schema_names is an internal field and must not appear in YAML output."""
+    spec = Specification(users=[], groups=[], schema_names={"mydb": ["public"]})
+    assert "schema_names" not in spec.to_yaml()
+    assert "schema_names" not in spec.to_dict()
+
+
+def test_specification_schema_names_from_connector():
+    """from_redshift_connector populates schema_names from Schema entities."""
+    connector = FakeRedshiftConnector()
+    spec = Specification.from_redshift_connector(connector)
+    assert "prod" in spec.schema_names
+    assert set(spec.schema_names["prod"]) == {"public", "analytics"}
+    assert "dev" in spec.schema_names
+    assert spec.schema_names["dev"] == ["dev_analytics"]
+
+
 def test_specification_from_redshift_connector_groups_privileges():
     """Test loading an specification from a RedshiftConnector."""
     connector = FakeRedshiftConnector()

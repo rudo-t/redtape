@@ -1,0 +1,14 @@
+services:
+  redshift-compat:
+    image: heartsim/pgredshift:latest
+    ports:
+      - "5439:5432"
+    environment:
+      POSTGRES_DB: test_db
+      POSTGRES_USER: test_admin
+      POSTGRES_PASSWORD: TestPassword1
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_admin -d test_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

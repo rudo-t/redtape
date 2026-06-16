@@ -457,6 +457,7 @@ class User:
 class Specification:
     users: Optional[List[User]] = None
     groups: Optional[List[Group]] = None
+    schema_names: dict = attrs.field(factory=dict, eq=False, hash=False)
 
     def __attrs_post_init__(self):
         if self.users is None:
@@ -468,6 +469,7 @@ class Specification:
     def from_redshift_connector(cls, connector: RedshiftConnector) -> Specification:
         """Initialize a Specification from a RedshiftConnector."""
         users, groups = cls.fetch_users_and_groups(connector)
+        schema_names: dict = {}
 
         user_idx = {user.name: idx for idx, user in enumerate(users)}
         group_idx = {group.name: idx for idx, group in enumerate(groups)}
@@ -498,6 +500,9 @@ class Specification:
                 db_obj = DatabaseObject.from_parts(
                     *get_schema_parts(entity),
                     type=DatabaseObjectType.SCHEMA,
+                )
+                schema_names.setdefault(entity.database_name, []).append(
+                    entity.schema_name
                 )
 
             owner = entity.owner
@@ -537,7 +542,7 @@ class Specification:
             )
             users.append(public_user)
 
-        return cls(users=users, groups=groups)
+        return cls(users=users, groups=groups, schema_names=schema_names)
 
     @staticmethod
     def fetch_users_and_groups(
