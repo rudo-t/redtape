@@ -194,7 +194,7 @@ class UserManagementOperation(ManagementOperation):
     def build_grant_query(self) -> str:
         if self.privilege is None:
             raise TypeError(
-                f"{operation} requires a Privilege but {type(privilege)} was provided."
+                f"{self.operation} requires a Privilege but {type(self.privilege)} was provided."
             )
 
         db_obj = self.privilege.database_object
@@ -270,7 +270,7 @@ class GroupManagementOperation(ManagementOperation):
     def build_grant_query(self) -> str:
         if self.privilege is None:
             raise TypeError(
-                f"{operation} requires a Privilege but {type(privilege)} was provided."
+                f"{self.operation} requires a Privilege but {type(self.privilege)} was provided."
             )
 
         db_obj = self.privilege.database_object

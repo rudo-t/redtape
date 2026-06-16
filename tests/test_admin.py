@@ -182,6 +182,18 @@ def test_user_management_operation_grant_with_wildcard(user):
     assert result == expected
 
 
+def test_user_management_operation_grant_without_privilege_raises_typeerror(user):
+    """GRANT with privilege=None should raise TypeError, not NameError."""
+    op = UserManagementOperation(
+        operation=Operation.GRANT,
+        subject=user,
+        privilege=None,
+    )
+
+    with pytest.raises(TypeError):
+        op.build_query()
+
+
 def test_group_management_operation_create(group):
     """Test the build_query method for a CREATE operation."""
     op = GroupManagementOperation(
@@ -243,6 +255,18 @@ def test_group_management_operation_grant_with_wildcard(group):
     expected = "GRANT SELECT ON ALL TABLES IN SCHEMA my_db.my_schema TO a_user_group_1;"
 
     assert result == expected
+
+
+def test_group_management_operation_grant_without_privilege_raises_typeerror(group):
+    """GRANT with privilege=None should raise TypeError, not NameError."""
+    op = GroupManagementOperation(
+        operation=Operation.GRANT,
+        subject=group,
+        privilege=None,
+    )
+
+    with pytest.raises(TypeError):
+        op.build_query()
 
 
 def test_group_management_operation_invalid(group):
