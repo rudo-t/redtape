@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import yaml
 from typer.testing import CliRunner
@@ -9,6 +11,9 @@ from typer.testing import CliRunner
 from redtape.cli import app
 
 runner = CliRunner()
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+EXAMPLE_SPEC = REPO_ROOT / "examples" / "spec.yaml"
 
 
 @pytest.fixture
@@ -42,6 +47,17 @@ def test_validate_file_not_found():
     """validate exits 1 when the spec file does not exist."""
     result = runner.invoke(app, ["validate", "/nonexistent/path/redtape.yml"])
     assert result.exit_code == 1
+
+
+def test_example_spec_is_valid():
+    """The README-referenced examples/spec.yaml must validate.
+
+    Guards against the documented example drifting out of sync with the
+    spec format. No database required.
+    """
+    assert EXAMPLE_SPEC.is_file(), f"missing example spec at {EXAMPLE_SPEC}"
+    result = runner.invoke(app, ["validate", str(EXAMPLE_SPEC)])
+    assert result.exit_code == 0, result.output
 
 
 def test_validate_invalid_spec(tmp_path):
