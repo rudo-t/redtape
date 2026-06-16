@@ -24,6 +24,71 @@ python -m pip install redtape-py
 
 ## Usage
 
+Once installed, `redtape` is available on your `PATH`. When working from a checkout without installing, prefix any command with `uv run` (e.g. `uv run redtape validate examples/spec.yaml`).
+
+`redtape` exposes three commands:
+
+| Command | Needs a live database? | Description |
+|---|---|---|
+| `validate` | No | Validate a local specification file and report any errors. |
+| `run` | Yes (even with `--dry`, to read current state) | Diff the spec against the live database and apply the SQL needed to close the gap. |
+| `export` | Yes | Read the current database state and emit it as a specification. |
+
+Run `redtape <command> --help` for the full option list.
+
+### Quick start (no database)
+
+`validate` checks a specification file offline — the fastest way to confirm your install works. A ready-to-run sample lives at [`examples/spec.yaml`](examples/spec.yaml):
+
+```sh
+redtape validate examples/spec.yaml
+# Specification loaded!
+# Validation successful!
+```
+
+### Connecting to Redshift
+
+`run` and `export` need connection details, supplied by any of:
+
+- Environment variables prefixed with `REDTAPE_REDSHIFT_`:
+
+  ```sh
+  export REDTAPE_REDSHIFT_HOST=my-cluster.example.redshift.amazonaws.com
+  export REDTAPE_REDSHIFT_PORT=5439
+  export REDTAPE_REDSHIFT_DBNAME=dev
+  export REDTAPE_REDSHIFT_USER=admin
+  export REDTAPE_REDSHIFT_PASSWORD=...
+  ```
+
+- A `.redtape.ini` file (path overridable via the `REDTAPE_CONFIG` environment variable) with a `[redtape.redshift]` section.
+- Command-line flags: `--host`, `--port`, `--dbname`, `--database-user`, `--password`, or a full `--connection-string`.
+
+Apply a specification (use `--dry` first to print the SQL without executing it):
+
+```sh
+redtape run --dry examples/spec.yaml   # print the GRANT/CREATE/REVOKE statements only
+redtape run examples/spec.yaml         # apply them
+redtape export                         # dump the live database state as a spec
+```
+
+### Trying it locally with Docker
+
+The repo ships a `docker-compose.yml` with a Redshift-compatible database ([`heartsim/pgredshift`](https://hub.docker.com/r/heartsim/pgredshift)) so you can exercise `run` and `export` without a real cluster:
+
+```sh
+docker compose up -d
+
+export REDTAPE_REDSHIFT_HOST=localhost
+export REDTAPE_REDSHIFT_PORT=5439
+export REDTAPE_REDSHIFT_DBNAME=test_db
+export REDTAPE_REDSHIFT_USER=test_admin
+export REDTAPE_REDSHIFT_PASSWORD=TestPassword1
+
+redtape run --dry examples/spec.yaml
+```
+
+### `redtape run` options
+
 ``` sh
 ❯ redtape run --help
 Usage: redtape run [OPTIONS] [SPEC_FILE]
