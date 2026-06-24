@@ -33,6 +33,8 @@ from .models import (
     ValidationFailure,
 )
 
+# Explicit re-export so the model names are importable from
+# ``redtape.specification`` under mypy's strict ``no_implicit_reexport``.
 __all__ = [
     "Action",
     "DatabaseObject",
