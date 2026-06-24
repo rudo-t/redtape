@@ -666,6 +666,76 @@ def test_prepare_subject_privileges_invalid_operation(user):
         trainer.prepare_subject_privileges(user, [], [], Operation.CREATE)
 
 
+def test_trainer_filter_database_objects_excludes_grant():
+    """filter_database_objects excludes GRANT ops whose object fails the filter."""
+    excluded = DatabaseObject(name="secret_table", type=DatabaseObjectType.TABLE)
+    excluded_priv = Privilege(database_object=excluded, action=Action.SELECT)
+    allowed = DatabaseObject(name="public_table", type=DatabaseObjectType.TABLE)
+    allowed_priv = Privilege(database_object=allowed, action=Action.SELECT)
+
+    desired_user = User(
+        name="alice",
+        is_superuser=False,
+        privileges=Privileges([excluded_priv, allowed_priv]),
+    )
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[desired_user], groups=[]),
+        current_spec=Specification(users=[], groups=[]),
+        filter_database_objects=lambda obj: obj.name != "secret_table",
+    )
+    admin = trainer.train()
+
+    grant_ops = [op for op in admin.ops if op.operation is Operation.GRANT]
+    granted_names = {op.privilege.database_object.name for op in grant_ops}
+    assert "secret_table" not in granted_names
+    assert "public_table" in granted_names
+
+
+def test_trainer_filter_database_objects_excludes_alter_owner():
+    """filter_database_objects excludes ALTER_OWNER ops whose object fails the filter."""
+    excluded = DatabaseObject(name="secret_schema.t", type=DatabaseObjectType.TABLE)
+    allowed = DatabaseObject(name="public_schema.t", type=DatabaseObjectType.TABLE)
+    desired_user = User(
+        name="alice",
+        is_superuser=False,
+        owns=Ownerships([excluded, allowed]),
+    )
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[desired_user], groups=[]),
+        current_spec=Specification(users=[], groups=[]),
+        filter_database_objects=lambda obj: obj.name != "secret_schema.t",
+    )
+    admin = trainer.train()
+
+    alter_ops = [op for op in admin.ops if op.operation is Operation.ALTER_OWNER]
+    owned_names = {op.database_object.name for op in alter_ops}
+    assert "secret_schema.t" not in owned_names
+    assert "public_schema.t" in owned_names
+
+
+def test_trainer_filter_database_objects_default_allows_all():
+    """The permissive default filter does not over-filter object ops."""
+    table = DatabaseObject(name="a_table", type=DatabaseObjectType.TABLE)
+    priv = Privilege(database_object=table, action=Action.SELECT)
+    owned = DatabaseObject(name="b_schema.b_table", type=DatabaseObjectType.TABLE)
+    desired_user = User(
+        name="alice",
+        is_superuser=False,
+        privileges=Privileges([priv]),
+        owns=Ownerships([owned]),
+    )
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[desired_user], groups=[]),
+        current_spec=Specification(users=[], groups=[]),
+    )
+    admin = trainer.train()
+
+    grant_ops = [op for op in admin.ops if op.operation is Operation.GRANT]
+    alter_ops = [op for op in admin.ops if op.operation is Operation.ALTER_OWNER]
+    assert {op.privilege.database_object.name for op in grant_ops} == {"a_table"}
+    assert {op.database_object.name for op in alter_ops} == {"b_schema.b_table"}
+
+
 def test_train_includes_operation_for_truthy_non_true_filter():
     """A filter returning a truthy non-True value should include the operation.
 
