@@ -263,7 +263,7 @@ class Password:
         elif self._type is PasswordType.SHA256:
             return "sha256|{digest}{salt}".format(
                 digest=self.value,
-                salt="|{self.salt}" if self.salt is not None else "",
+                salt=f"|{self.salt}" if self.salt is not None else "",
             )
         elif self._type is PasswordType.MD5:
             return f"md5{self.value}"
