@@ -6,10 +6,38 @@ Declarative Redshift permission management CLI. Reads a YAML spec describing the
 
 ```bash
 uv sync --group dev   # install all dependencies (one-time)
-pytest tests/ -v      # run unit tests
-pytest tests/ -v --cov=redtape --cov-report=term-missing  # with coverage
-pytest tests/integration/ -m integration -v               # integration tests (requires docker compose up -d)
 ```
+
+Run every dev tool through `uv` so it resolves against the locked environment — do **not** call bare `pytest`/`ruff`/`mypy` or use `poetry`:
+
+```bash
+# Tests
+uv run --with pytest pytest tests/ -q                              # unit tests
+uv run --with pytest pytest tests/ --cov=redtape --cov-report=term-missing
+uv run --with pytest pytest tests/integration/ -m integration -v   # needs `docker compose up -d`
+```
+
+> The 5 integration tests under `tests/integration/` error without a live Redshift cluster
+> (`RedshiftConnector.from_dsn`) — see issue #38. The unit suite must stay green.
+
+## Code quality
+
+A single toolchain is configured in `pyproject.toml`. Run all three before opening a PR; they must be clean.
+
+```bash
+uv run --with ruff ruff check .          # lint  (ruff replaces black + isort + flake8)
+uv run --with ruff ruff format .         # format
+uv run --with ruff ruff check --fix .    # auto-fix lint violations
+uv run --with mypy mypy redtape/         # type check (strict mode)
+uv run --with vulture vulture redtape/ whitelist.py --min-confidence 80   # dead code
+```
+
+Conventions:
+- **ruff** is the only linter/formatter. Config (`select`, per-file-ignores, `line-length = 88`) lives in `[tool.ruff]`. `E501` and `B008` are intentionally ignored — don't reflow long SQL/Typer strings or rewrite Typer option defaults to satisfy them.
+- **mypy** runs with `strict = true`. attrs support is built into mypy's default plugin (do **not** add `plugins = ["mypy.plugins.attrs"]` — that entry point is invalid). A documented `disable_error_code` list in `[tool.mypy]` defers known legacy debt so strict stays on for new code; clear deferred codes as you touch the relevant modules rather than adding new ignores.
+- **vulture** runs at `--min-confidence 80`. Dynamic-dispatch callbacks (`@build_query.register` handlers reached via `OperationDispatch`) are recorded in `whitelist.py`; add genuine false positives there rather than lowering the threshold.
+
+> `.pre-commit-config.yaml` still references the old hooks — wiring these tools into pre-commit is tracked by issue #45.
 
 ## Agent skills
 
