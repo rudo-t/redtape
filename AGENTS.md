@@ -15,11 +15,11 @@ pytest tests/integration/ -m integration -v               # integration tests (r
 
 ### Issue tracker
 
-Issues live as markdown files under `.scratch/`, one directory per feature. See `docs/agents/issue-tracker.md`.
+Issues live as GitHub issues on the fork `rudo-t/redtape` (always pass `--repo rudo-t/redtape`). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Default five-state vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`) recorded as a `Status:` line in each issue file. See `docs/agents/triage-labels.md`.
+Default five-state vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`) applied as GitHub labels. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 

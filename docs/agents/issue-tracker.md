@@ -1,35 +1,22 @@
-# Issue tracker: Local Markdown
+# Issue tracker: GitHub
 
-Issues for this repo live as markdown files in `.scratch/`.
+Issues and PRDs for this repo live as GitHub issues on the fork **`rudo-t/redtape`**. Use the `gh` CLI for all operations.
+
+> **Always pass `--repo rudo-t/redtape`.** This clone's `origin` points at the upstream `tomasfarias/redtape`, so `gh` would otherwise default to upstream. Every command below pins the fork explicitly.
 
 ## Conventions
 
-- One feature per directory: `.scratch/<feature-slug>/`
-- Implementation issues are `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`
-- Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
-- Comments and conversation history append to the bottom of the file under a `## Comments` heading
+- **Create an issue**: `gh issue create --repo rudo-t/redtape --title "..." --body "..."`. Use a heredoc for multi-line bodies.
+- **Read an issue**: `gh issue view <number> --repo rudo-t/redtape --comments`.
+- **List issues**: `gh issue list --repo rudo-t/redtape --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
+- **Comment on an issue**: `gh issue comment <number> --repo rudo-t/redtape --body "..."`
+- **Apply / remove labels**: `gh issue edit <number> --repo rudo-t/redtape --add-label "..."` / `--remove-label "..."`
+- **Close**: `gh issue close <number> --repo rudo-t/redtape --comment "..."`
 
 ## When a skill says "publish to the issue tracker"
 
-Create a new file under `.scratch/<feature-slug>/issues/` (creating the directory if needed).
+Create a GitHub issue on `rudo-t/redtape`.
 
 ## When a skill says "fetch the relevant ticket"
 
-Read the file at the referenced path. The user will normally pass the path or the issue number directly.
-
-## Feature directories
-
-| Directory | Description |
-|---|---|
-| `.scratch/bugs/` | Bug fixes (critical, high, low priority) |
-| `.scratch/role-support/` | Redshift RBAC roles — highest priority feature |
-| `.scratch/wildcard-coverage/` | Database-level and function/procedure wildcards |
-| `.scratch/privilege-abstraction/` | `read`/`write` shorthand expansion |
-| `.scratch/ownership-enforcement/` | `owns:` / `ALTER_OWNER` end-to-end |
-| `.scratch/auth-methods/` | IAM credentials, DSN shorthand |
-| `.scratch/modular-specs/` | `!include` directive for splitting specs |
-| `.scratch/default-privileges/` | `ALTER DEFAULT PRIVILEGES` support |
-| `.scratch/redshift-specific/` | ASSUMEROLE, external schemas, `sys:` roles |
-| `.scratch/testing/` | Integration and unit test gaps |
-| `.scratch/code-quality/` | Internal refactors and cleanup |
-| `.scratch/tooling/` | Linting, type checking, pre-commit toolchain |
+Run `gh issue view <number> --repo rudo-t/redtape --comments`.
