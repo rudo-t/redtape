@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from unittest import mock
 
+import psycopg2
 import pytest
 
 from redtape.admin import (
+    DatabaseAdministrator,
     DatabaseAdministratorTrainer,
     GroupManagementOperation,
     ManagementOperation,
+    ManagementOperationError,
+    OnError,
     OperationDispatch,
     UserManagementOperation,
 )
@@ -689,3 +694,120 @@ def test_train_includes_operation_for_truthy_non_true_filter():
     prepare_create.assert_called_once()
     # DROP filter returned 0 (falsy) -> operation must be skipped.
     prepare_drop.assert_not_called()
+
+
+class _FakeAction:
+    """A minimal stand-in for a ManagementOperation exposing a query."""
+
+    def __init__(self, query: str):
+        self.query = query
+
+    def __str__(self) -> str:
+        return f"<FakeAction: {self.query}>"
+
+
+class ConnectCountingRedshiftConnector:
+    """A fake connector whose ``connect()`` contextmanager counts entries.
+
+    Mirrors the connect-counting fake used in ``tests/test_specification``:
+    each entry into the ``connect()`` contextmanager increments
+    ``connect_count`` and the connector records every query passed to
+    ``run_query``. A query string present in ``fail_on`` raises a
+    ``psycopg2.Error`` to simulate a database failure without a real
+    database.
+    """
+
+    def __init__(self, fail_on: set[str] | None = None):
+        self.connect_count = 0
+        self.closed = False
+        self.ran_queries: list[str] = []
+        self.fail_on = fail_on or set()
+
+    @contextmanager
+    def connect(self):
+        self.connect_count += 1
+        try:
+            yield self
+        finally:
+            self.closed = True
+
+    def run_query(self, query: str):
+        self.ran_queries.append(query)
+        if query in self.fail_on:
+            raise psycopg2.Error(f"boom: {query}")
+        return None
+
+
+def _administrator_with_queries(queries: list[str]) -> DatabaseAdministrator:
+    """Build a DatabaseAdministrator whose queries() yields the given queries."""
+    return DatabaseAdministrator(ops=[_FakeAction(q) for q in queries])
+
+
+def test_manage_opens_connection_at_most_once():
+    """manage() must reuse a single connection across all queries.
+
+    Regression test for issue #9: previously a new connection was opened per
+    statement, so applying N changes did N TCP handshakes.
+    """
+    connector = ConnectCountingRedshiftConnector()
+    admin = _administrator_with_queries(["SELECT 1", "SELECT 2", "SELECT 3"])
+
+    success, errors = admin.manage(connector)
+
+    assert connector.connect_count <= 1
+    assert success is True
+    assert errors == []
+
+
+def test_manage_runs_all_queries():
+    """All queries produced by the manager must be executed on the connection."""
+    connector = ConnectCountingRedshiftConnector()
+    admin = _administrator_with_queries(["SELECT 1", "SELECT 2", "SELECT 3"])
+
+    success, errors = admin.manage(connector)
+
+    assert connector.ran_queries == ["SELECT 1", "SELECT 2", "SELECT 3"]
+    assert success is True
+    assert errors == []
+
+
+def test_manage_abort_reraises_on_failure():
+    """OnError.ABORT must re-raise ManagementOperationError and stop early."""
+    connector = ConnectCountingRedshiftConnector(fail_on={"SELECT 2"})
+    admin = _administrator_with_queries(["SELECT 1", "SELECT 2", "SELECT 3"])
+
+    with pytest.raises(ManagementOperationError):
+        admin.manage(connector, on_error=OnError.ABORT)
+
+    # The failing query was attempted; the query after it was never run.
+    assert connector.ran_queries == ["SELECT 1", "SELECT 2"]
+    # The connection is closed exactly once even when aborting.
+    assert connector.closed is True
+    assert connector.connect_count == 1
+
+
+def test_manage_continue_collects_errors_and_keeps_going():
+    """OnError.CONTINUE collects the error and continues to later queries."""
+    connector = ConnectCountingRedshiftConnector(fail_on={"SELECT 2"})
+    admin = _administrator_with_queries(["SELECT 1", "SELECT 2", "SELECT 3"])
+
+    success, errors = admin.manage(connector, on_error=OnError.CONTINUE)
+
+    assert success is False
+    assert errors is not None
+    assert len(errors) == 1
+    assert isinstance(errors[0], ManagementOperationError)
+    # Every query was attempted despite the failure of SELECT 2.
+    assert connector.ran_queries == ["SELECT 1", "SELECT 2", "SELECT 3"]
+    assert connector.connect_count == 1
+
+
+def test_manage_closes_connection_after_loop():
+    """The single connection is closed after the apply loop completes."""
+    connector = ConnectCountingRedshiftConnector()
+    admin = _administrator_with_queries(["SELECT 1", "SELECT 2"])
+
+    admin.manage(connector)
+
+    assert connector.closed is True
+    assert connector.connect_count == 1

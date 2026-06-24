@@ -744,30 +744,34 @@ class DatabaseAdministrator:
         errors = []
         success = True
 
-        for idx, tup in enumerate(self.queries()):
-            query, action = tup
-            before_result = before_callback(query, action)
+        # Open a single connection for the whole apply loop and reuse it for
+        # every query (issue #9). The connect() contextmanager owns the
+        # lifecycle: it opens the connection on entry and closes it exactly
+        # once on exit, even when an error propagates out of the loop.
+        with connector.connect() as conn:
+            for idx, tup in enumerate(self.queries()):
+                query, action = tup
+                before_result = before_callback(query, action)
 
-            try:
-                with connector.connect() as conn:
+                try:
                     _ = conn.run_query(query)
 
-            except psycopg2.Error as e:
-                success = False
+                except psycopg2.Error as e:
+                    success = False
 
-                on_error_callback(query, action, e, before_result)
+                    on_error_callback(query, action, e, before_result)
 
-                if on_error == OnError.ABORT:
-                    raise ManagementOperationError(action) from e
+                    if on_error == OnError.ABORT:
+                        raise ManagementOperationError(action) from e
+                    else:
+                        exc = ManagementOperationError(action)
+                        exc.__cause__ = e
+                        errors.append(exc)
+
                 else:
-                    exc = ManagementOperationError(action)
-                    exc.__cause__ = e
-                    errors.append(exc)
+                    success_callback(query, action, before_result)
 
-            else:
-                success_callback(query, action, before_result)
-
-            finally:
-                progress_callback(query, action, idx)
+                finally:
+                    progress_callback(query, action, idx)
 
         return success, errors
