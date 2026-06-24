@@ -676,6 +676,7 @@ class Specification:
                 subject=user,
                 message=f"User is member of non declared groups: {non_existing_groups}",
             )
+            success = False
             try:
                 failures.append(failure)
             except AttributeError:

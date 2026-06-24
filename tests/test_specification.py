@@ -1027,3 +1027,21 @@ def test_specification_from_redshift_connector_groups_privileges():
 
         elif group.name == "everyone":
             assert group.privileges is None
+
+
+def test_check_users_belong_to_existing_groups_non_existent_group():
+    """A user in a non-declared group fails the check."""
+    group = Group(name="existing_group")
+    user = User(
+        name="test_user_1",
+        is_superuser=False,
+        member_of={"existing_group", "non_existent_group"},
+    )
+
+    specification = Specification(users=[user], groups=[group])
+
+    success, failures = specification.check_users_belong_to_existing_groups()
+
+    assert success is False
+    assert failures is not None
+    assert len(failures) > 0
