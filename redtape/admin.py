@@ -254,8 +254,7 @@ class GroupManagementOperation(ManagementOperation):
     def __repr__(self):
         return (
             f"GroupManagementOperation(operation={self.operation}, "
-            f"subject={self.subject}, privilege={self.privilege}, "
-            f"group={self.group})"
+            f"subject={self.subject}, privilege={self.privilege})"
         )
 
     @build_query.register(Operation.CREATE)
@@ -394,27 +393,27 @@ class DatabaseAdministratorTrainer:
         return self._current_users
 
     def train(self) -> DatabaseAdministrator:
-        if self.filter_operations(Operation.CREATE) is True:
+        if self.filter_operations(Operation.CREATE):
             self.prepare_create_subjects()
 
-        if self.filter_operations(Operation.ADD_TO_GROUP) is True:
+        if self.filter_operations(Operation.ADD_TO_GROUP):
             self.prepare_add_to_group()
 
-        if self.filter_operations(Operation.ALTER_OWNER) is True:
+        if self.filter_operations(Operation.ALTER_OWNER):
             self.prepare_alter_ownership()
 
-        if self.filter_operations(Operation.GRANT) is True:
+        if self.filter_operations(Operation.GRANT):
             self.prepare_grant_group_privileges()
             self.prepare_grant_user_privileges()
 
-        if self.filter_operations(Operation.REVOKE) is True:
+        if self.filter_operations(Operation.REVOKE):
             self.prepare_revoke_group_privileges()
             self.prepare_revoke_user_privileges()
 
-        if self.filter_operations(Operation.DROP_FROM_GROUP) is True:
+        if self.filter_operations(Operation.DROP_FROM_GROUP):
             self.prepare_drop_from_group()
 
-        if self.filter_operations(Operation.DROP) is True:
+        if self.filter_operations(Operation.DROP):
             self.prepare_drop_subjects()
 
         return DatabaseAdministrator(self._management_ops)

@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 
-Three separate tools replaced by one. Ruff is maintained by the same team as `uv` (already in use), 10–100× faster, and configured entirely in `pyproject.toml`. The existing `isort` config has stale `py_version = 38` despite the project requiring Python 3.10+.
+Three separate tools replaced by one. Ruff is maintained by the same team as `uv` (already in use), 10–100× faster, and configured entirely in `pyproject.toml`. The existing `isort` config has stale `py_version = 38` despite the project requiring Python 3.12+.
 
 ## Work breakdown
 
@@ -12,7 +12,7 @@ Three separate tools replaced by one. Ruff is maintained by the same team as `uv
   ```toml
   [tool.ruff]
   line-length = 88
-  target-version = "py310"
+  target-version = "py312"
 
   [tool.ruff.lint]
   select = ["E", "W", "F", "I", "B", "N", "UP", "S", "SIM", "RUF"]
