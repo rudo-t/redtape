@@ -424,6 +424,9 @@ class DatabaseAdministratorTrainer:
                 continue
 
             for db_obj in user.owns:
+                if not self.filter_database_objects(db_obj):
+                    continue
+
                 self._management_ops.append(
                     UserManagementOperation(
                         subject=user,
@@ -671,6 +674,9 @@ class DatabaseAdministratorTrainer:
 
         for privilege in expanded_desired:
             if privilege in expanded_current:
+                continue
+
+            if not self.filter_database_objects(privilege.database_object):
                 continue
 
             self._management_ops.append(
