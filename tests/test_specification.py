@@ -1072,3 +1072,30 @@ def test_check_users_belong_to_existing_groups_non_existent_group():
     assert success is False
     assert failures is not None
     assert len(failures) > 0
+
+
+def test_user_validate_invalid_password_with_no_privileges():
+    """A user with no privileges must still have its password validated (issue #13)."""
+    user = User(
+        name="test_user_1",
+        is_superuser=False,
+        password=Password(type=PasswordType.PLAIN, value="weak"),
+        privileges=None,
+    )
+    success, failures = user.validate()
+    assert success is False
+    assert failures is not None
+    assert len(failures) > 0
+
+
+def test_user_validate_valid_password_with_no_privileges():
+    """A user with no privileges and a valid password passes validation (issue #13)."""
+    user = User(
+        name="test_user_1",
+        is_superuser=False,
+        password=Password(type=PasswordType.PLAIN, value="ValidPassw0rd"),
+        privileges=None,
+    )
+    success, failures = user.validate()
+    assert success is True
+    assert failures is None

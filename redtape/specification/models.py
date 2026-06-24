@@ -423,18 +423,16 @@ class User:
             self.owns = Ownerships((db_obj,))
 
     def validate(self) -> tuple[bool, list[ValidationFailure] | None]:
-        if self.privileges is None:
-            return True, None
-
         validation_failures: list[ValidationFailure] = []
         success = True
 
-        for privilege in self.privileges:
-            _, failures = privilege.validate()
+        if self.privileges is not None:
+            for privilege in self.privileges:
+                _, failures = privilege.validate()
 
-            if failures is not None:
-                validation_failures.extend(failures)
-                success = False
+                if failures is not None:
+                    validation_failures.extend(failures)
+                    success = False
 
         if self.password is not None:
             _, failures = self.password.validate()
