@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+
 import pytest
 
 import redtape.connectors as db
@@ -1072,3 +1074,81 @@ def test_check_users_belong_to_existing_groups_non_existent_group():
     assert success is False
     assert failures is not None
     assert len(failures) > 0
+
+
+class ConnectCountingRedshiftConnector(FakeRedshiftConnector):
+    """A FakeRedshiftConnector that counts how often connect() is entered."""
+
+    def __init__(self):
+        self.connect_calls = 0
+
+    @contextlib.contextmanager
+    def connect(self):
+        self.connect_calls += 1
+        yield self
+
+
+def test_specification_from_redshift_connector_uses_single_connect():
+    """Loading a Specification should enter connect() at most once.
+
+    Under the old per-query behavior each iter_* generator opened its own
+    connection, so this would count several connect() entries.
+    """
+    connector = ConnectCountingRedshiftConnector()
+    spec = Specification.from_redshift_connector(connector)
+
+    assert connector.connect_calls <= 1
+
+    # Sanity check the load still produced the expected users.
+    users = {user.name for user in spec.users}
+    assert users == {"dev_analyst", "prod_analyst", "prod_admin"}
+
+
+class _FakeConnection:
+    """A minimal stand-in for a psycopg2 connection."""
+
+    def __init__(self):
+        self.closed = 0
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+    def close(self):
+        self.closed = 1
+
+
+def test_real_redshift_connector_opens_connection_once(monkeypatch):
+    """The real RedshiftConnector.iter_* path should open at most one connection.
+
+    We monkeypatch open_connection and run_query_and_iter_rows so no real
+    network handshake happens. run_query_and_iter_rows returns an empty iterator
+    so iter_tables does not open any per-database connections.
+    """
+    connector = db.RedshiftConnector(
+        dbname="test",
+        host="localhost",
+        port=5439,
+        user="test",
+        password="hunter2A",
+    )
+
+    open_calls = 0
+
+    def fake_open_connection():
+        nonlocal open_calls
+        open_calls += 1
+        connector._connection = _FakeConnection()
+
+    monkeypatch.setattr(connector, "open_connection", fake_open_connection)
+    monkeypatch.setattr(connector, "run_query_and_iter_rows", lambda query: iter([]))
+
+    with connector.connect():
+        assert list(connector.iter_users()) == []
+        assert list(connector.iter_groups()) == []
+        assert list(connector.iter_databases()) == []
+        assert list(connector.iter_schemas()) == []
+
+    assert open_calls == 1

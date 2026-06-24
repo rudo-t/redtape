@@ -8,6 +8,7 @@ prepare the queries that need to be run."""
 
 from __future__ import annotations
 
+import contextlib
 import itertools
 import operator
 from collections.abc import Iterator
@@ -462,7 +463,19 @@ class Specification:
 
     @classmethod
     def from_redshift_connector(cls, connector: RedshiftConnector) -> Specification:
-        """Initialize a Specification from a RedshiftConnector."""
+        """Initialize a Specification from a RedshiftConnector.
+
+        The entire load runs inside a single ``connector.connect()`` block, so
+        the cluster-level queries (users, groups, databases, schemas) reuse one
+        physical connection instead of opening one per query.
+        """
+        connect = getattr(connector, "connect", None)
+        cm = connect() if callable(connect) else contextlib.nullcontext()
+        with cm:
+            return cls._load_from_connector(connector)
+
+    @classmethod
+    def _load_from_connector(cls, connector: RedshiftConnector) -> Specification:
         users, groups = cls.fetch_users_and_groups(connector)
         schema_names: dict = {}
 
