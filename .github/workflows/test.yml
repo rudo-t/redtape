@@ -34,12 +34,4 @@ jobs:
       - name: Dead-code check with vulture
         run: uv run --with vulture vulture redtape/ whitelist.py --min-confidence 80
       - name: Run unit tests with pytest
-        run: uv run --with pytest pytest -v --cov=./redtape --cov-report=xml:./coverage.xml --cov-report term-missing tests/ --ignore=tests/integration
-      - name: Upload code coverage
-        uses: codecov/codecov-action@v4
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./coverage.xml
-          name: redtape
-          flags: unittests
-          env_vars: OS,PYTHON
+        run: uv run --with pytest pytest -v --cov=./redtape --cov-report term-missing tests/ --ignore=tests/integration
