@@ -7,20 +7,20 @@ the builder."""
 
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Callable, Iterable, Iterator
 from enum import Enum
-from typing import Any, Callable, Iterator, Optional, Union
+from typing import Any
 
 import psycopg2
 
 from redtape.connectors import RedshiftConnector
 from redtape.specification import (
-    Action,
     DatabaseObject,
     DatabaseObjectType,
     Group,
     Operation,
     Privilege,
-    Privileges,
     Specification,
     User,
 )
@@ -52,13 +52,13 @@ class OperationDispatch:
         if instance is None:
             return self
 
-        op = getattr(instance, "operation")
+        op = instance.operation
         try:
             method = self.registry[op]
-        except KeyError:
+        except KeyError as err:
             raise ValueError(
                 f"{instance.subject.__class__.__name__} does not support {op} operations."
-            )
+            ) from err
 
         return method.__get__(instance, owner)
 
@@ -101,13 +101,13 @@ class ManagementOperation:
     def __init__(
         self,
         operation: Operation,
-        subject: Union[User, Group],
-        privilege: Optional[Privilege] = None,
+        subject: User | Group,
+        privilege: Privilege | None = None,
     ):
         self.operation = operation
         self.subject = subject
         self.privilege = privilege
-        self._query: Optional[str] = None
+        self._query: str | None = None
 
     def __str__(self):
         if self.privilege is None:
@@ -147,8 +147,8 @@ class UserManagementOperation(ManagementOperation):
     def __init__(
         self,
         *args,
-        group: Optional[Group] = None,
-        database_object: Optional[DatabaseObject] = None,
+        group: Group | None = None,
+        database_object: DatabaseObject | None = None,
         **kwargs,
     ):
         self.group = group
@@ -210,7 +210,7 @@ class UserManagementOperation(ManagementOperation):
             else DatabaseObjectType.TABLE
         )
 
-        if any((db_obj.has_wildcard_part(t) for t in support_on_all_query)):
+        if any(db_obj.has_wildcard_part(t) for t in support_on_all_query):
             db, schema, _ = db_obj.parts
             return (
                 f"GRANT {self.privilege.action.name} ON ALL "
@@ -286,7 +286,7 @@ class GroupManagementOperation(ManagementOperation):
             else DatabaseObjectType.TABLE
         )
 
-        if any((db_obj.has_wildcard_part(t) for t in support_on_all_query)):
+        if any(db_obj.has_wildcard_part(t) for t in support_on_all_query):
             db, schema, _ = db_obj.parts
             return (
                 f"GRANT {self.privilege.action.name} ON ALL "
@@ -445,8 +445,8 @@ class DatabaseAdministratorTrainer:
 
     def prepare_subjects(
         self,
-        desired_subjects: Union[list[User], list[Group]],
-        current_subjects: Union[list[User], list[Group]],
+        desired_subjects: list[User] | list[Group],
+        current_subjects: list[User] | list[Group],
         operation: Operation,
     ):
         desired_names = set(d.name for d in desired_subjects)
@@ -525,13 +525,11 @@ class DatabaseAdministratorTrainer:
 
             to_operate = user.member_of
 
-            try:
+            # KeyError raised if user doesn't currently exist; TypeError raised
+            # if user is not a member of any groups. In either case, no
+            # information about current group membership exists.
+            with contextlib.suppress(TypeError, KeyError):
                 to_operate = to_operate - users_map[user.name].member_of
-            except (TypeError, KeyError):
-                # No information about current group membership exists.
-                # KeyError raised if user doesn't currently exists.
-                # TypeError raised if user is not a member of any groups.
-                pass
 
             for group_name in to_operate:
                 group = group_map[group_name]
@@ -636,9 +634,8 @@ class DatabaseAdministratorTrainer:
         expanded = []
         for privilege in privileges:
             db_obj = privilege.database_object
-            if (
-                db_obj._type is DatabaseObjectType.SCHEMA
-                and db_obj.has_wildcard_part(DatabaseObjectType.SCHEMA)
+            if db_obj._type is DatabaseObjectType.SCHEMA and db_obj.has_wildcard_part(
+                DatabaseObjectType.SCHEMA
             ):
                 db_part, _, _ = db_obj.parts
                 db_name = db_part.name
@@ -655,7 +652,7 @@ class DatabaseAdministratorTrainer:
 
     def prepare_subject_privileges(
         self,
-        subject: Union[User, Group],
+        subject: User | Group,
         desired_privileges: list[Privilege],
         current_privileges: list[Privilege],
         operation: Operation,
@@ -720,7 +717,7 @@ class DatabaseAdministrator:
             [str, ManagementOperation, psycopg2.Error, Any], Any
         ] = _do_nothing,
         on_error: OnError = OnError.CONTINUE,
-    ) -> tuple[bool, Optional[list[ManagementOperationError]]]:
+    ) -> tuple[bool, list[ManagementOperationError] | None]:
         """Run the given actions and execute callbacks.
 
         Args:

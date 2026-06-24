@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections import namedtuple
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Iterator, Optional
 
 import attrs
 import environ
@@ -151,7 +151,7 @@ class Database:
 
     database_name: str
     database_owner: str
-    database_acl: Optional[str]
+    database_acl: str | None
 
     def iter_acl(self) -> Iterator[tuple[str, str, str]]:
         """Iterate over privileges granted specified in ACL."""
@@ -191,9 +191,9 @@ class Schema:
     schema_name: str
     schema_owner: int
     schema_type: str
-    schema_acl: Optional[str]
-    source_database: Optional[str]
-    schema_option: Optional[str]
+    schema_acl: str | None
+    source_database: str | None
+    schema_option: str | None
 
     def iter_acl(self) -> Iterator[tuple[str, str, str]]:
         """Iterate over privileges granted specified in ACL."""
@@ -234,8 +234,8 @@ class Table:
     table_name: str
     table_owner: str
     table_type: str
-    table_acl: Optional[str]
-    remarks: Optional[str]
+    table_acl: str | None
+    remarks: str | None
 
     def iter_acl(self) -> Iterator[tuple[str, str, str]]:
         """Iterate over privileges granted specified in ACL."""
@@ -257,7 +257,7 @@ class Table:
         return "TABLE"
 
 
-def parse_acl(acl: Optional[str], sep: str = ",") -> Iterator[tuple[str, str, str]]:
+def parse_acl(acl: str | None, sep: str = ",") -> Iterator[tuple[str, str, str]]:
     """Iterate over a Redshift ACL string.
 
     The ACL string is usually produced by appending the elements of an array
@@ -314,15 +314,15 @@ class User:
     usecreatedb: bool
     usesuper: bool
     usecatupd: bool
-    valuntil: Optional[str]
-    useconfig: Optional[str]
+    valuntil: str | None
+    useconfig: str | None
 
 
 @attrs.frozen(hash=True)
 class Group:
     groname: str
     grosysid: str
-    grolist: Optional[list[int]]
+    grolist: list[int] | None
 
     def iter_group_members(self) -> Iterator[int]:
         """Iterate over user ids that are members of this group, if any.
@@ -333,8 +333,7 @@ class Group:
         if self.grolist is None:
             return
 
-        for user_id in self.grolist:
-            yield user_id
+        yield from self.grolist
 
 
 class DatabaseConnector:
@@ -397,20 +396,10 @@ class RedshiftConnector(DatabaseConnector):
         super().__init__()
 
     def __repr__(self):
-        return "RedshiftConnector(db_url='{user}@{host}:{port}/{dbname}')".format(
-            dbname=self.dbname,
-            host=self.host,
-            port=self.port,
-            user=self.user,
-        )
+        return f"RedshiftConnector(db_url='{self.user}@{self.host}:{self.port}/{self.dbname}')"
 
     def __str__(self):
-        return "<RedshiftConnector: {user}@{host}:{port}/{dbname}>".format(
-            dbname=self.dbname,
-            host=self.host,
-            port=self.port,
-            user=self.user,
-        )
+        return f"<RedshiftConnector: {self.user}@{self.host}:{self.port}/{self.dbname}>"
 
     def parse_db_url(self):
         parsed = parse_dsn(self.db_url)
@@ -424,10 +413,7 @@ class RedshiftConnector(DatabaseConnector):
         """Run a query using this RedshiftConnector's connection."""
         with self.cursor() as cursor:
             cursor.execute(query)
-            if cursor.rowcount == -1:
-                result = None
-            else:
-                result = cursor.fetchone()
+            result = None if cursor.rowcount == -1 else cursor.fetchone()
         return result
 
     def run_query_and_iter_rows(self, query: str) -> Iterator:
@@ -558,7 +544,6 @@ class RedshiftConnector(DatabaseConnector):
 
         with self.connect() as conn:
             for row in conn.run_query_and_iter_rows(query):
-
                 yield Schema(**row._asdict())
 
     def iter_tables(self, ignore_system: bool = True) -> Iterator[Table]:
@@ -578,7 +563,6 @@ class RedshiftConnector(DatabaseConnector):
             query += "WHERE t.schemaname NOT IN ('information_schema', 'pg_catalog')"
 
         for database in self.iter_databases():
-
             new_connector = RedshiftConnector(
                 dbname=database.database_name,
                 port=self.port,

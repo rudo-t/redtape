@@ -4,22 +4,23 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Callable
 from contextlib import nullcontext
+from itertools import count
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Any
 
 import typer
 from rich.console import Console
 from rich.console import Group as ProgressGroup
 from rich.live import Live
-from rich.progress import Progress, track
+from rich.progress import Progress
 from rich.syntax import Syntax
 from rich.table import Table
 
-from redtape.admin import DatabaseAdministratorTrainer, OnError
+from redtape.admin import DatabaseAdministratorTrainer
 from redtape.connectors import RedshiftConnector
 from redtape.specification import (
-    DatabaseObject,
     Group,
     Operation,
     Specification,
@@ -30,7 +31,7 @@ from redtape.specification import (
 app = typer.Typer()
 console = Console()
 
-Printable = Union[str, Table, Syntax]
+Printable = str | Table | Syntax
 
 
 def console_print(message: Printable, quiet: bool):
@@ -52,7 +53,7 @@ def console_status(message: str, quiet: bool, **kwargs):
 
 @app.command()
 def validate(
-    spec_file: Optional[str] = typer.Argument(
+    spec_file: str | None = typer.Argument(
         None,
         show_default="STDIN",
         help="A specification or a path to a file containing it.",
@@ -81,7 +82,7 @@ def export(
         False,
         help="Export configuration as JSON instead of YAML.",
     ),
-    config: Optional[Path] = typer.Option(
+    config: Path | None = typer.Option(
         None,
         help="Path to a Redtape configuration file for database connections. The REDSHIFT_CONFIG environment variable may be set instead.",
         case_sensitive=False,
@@ -92,19 +93,15 @@ def export(
     ),
 ):
     """Export a specification from an existing Redshift connection."""
-    if config is None:
-        environ = os.environ
-    else:
-        environ = {"REDSHIFT_CONFIG": config}
+    environ = os.environ if config is None else {"REDSHIFT_CONFIG": config}
 
     connector = RedshiftConnector.from_environ(environ=environ)
 
     db_spec = load_spec(connector, quiet)
     with console_status("Exporting configuration...", quiet):
-
         if json is True:
             print_func: Callable[..., None] = console.print_json
-            output: Union[str, bytes, Syntax] = db_spec.to_json()
+            output: str | bytes | Syntax = db_spec.to_json()
         else:
             output = Syntax(db_spec.to_yaml(), "yaml", background_color="default")
             print_func = console.print
@@ -114,7 +111,7 @@ def export(
 
 @app.command()
 def run(
-    spec_file: Optional[str] = typer.Argument(
+    spec_file: str | None = typer.Argument(
         None,
         show_default="STDIN",
         help="A specification or a path to a file containing it.",
@@ -127,18 +124,18 @@ def run(
         False,
         help="Skip specification file validation.",
     ),
-    user: Optional[list[str]] = typer.Option(
+    user: list[str] | None = typer.Option(
         None, help="Apply operations only to users named as provided."
     ),
-    group: Optional[list[str]] = typer.Option(
+    group: list[str] | None = typer.Option(
         None, help="Apply operations only to groups named as provided."
     ),
-    operation: Optional[list[Operation]] = typer.Option(
+    operation: list[Operation] | None = typer.Option(
         None,
         help="Apply only provided operations.",
         case_sensitive=False,
     ),
-    config: Optional[Path] = typer.Option(
+    config: Path | None = typer.Option(
         None,
         help="Path to a Redtape configuration file for database connections. The REDSHIFT_CONFIG environment variable may be set instead.",
         case_sensitive=False,
@@ -158,10 +155,7 @@ def run(
         if success is False:
             raise typer.Exit(code=1)
 
-    if config is None:
-        environ = os.environ
-    else:
-        environ = {"REDSHIFT_CONFIG": config}
+    environ = os.environ if config is None else {"REDSHIFT_CONFIG": config}
 
     connector = RedshiftConnector.from_environ(environ=environ)
 
@@ -216,8 +210,11 @@ def run(
 
     main_task_id = main_progress.add_task("", total=total_queries)
 
+    query_counter = count()
+
     def before_callback(query, action):
-        descr = f"Running query {idx+1} out of {total_queries}"
+        idx = next(query_counter)
+        descr = f"Running query {idx + 1} out of {total_queries}"
         main_progress.update(main_task_id, description=descr, advance=1)
 
         task = query_progress.add_task(f"Running: {query}", total=1)
@@ -250,7 +247,7 @@ def run(
         elif len(errors) == len(total_queries):
             main_progress.update(
                 main_task_id,
-                description=f"[bold red]Failure: all queries failed to run.",
+                description="[bold red]Failure: all queries failed to run.",
             )
         else:
             main_progress.update(
@@ -264,7 +261,7 @@ def run(
 
 
 def load_spec(
-    spec_source: Optional[Union[str, RedshiftConnector]], quiet: bool
+    spec_source: str | RedshiftConnector | None, quiet: bool
 ) -> Specification:
     """Load a specification from a given source.
 
@@ -295,20 +292,20 @@ def load_spec(
         console_print(
             f"[bold red]Specification file does not exist {spec_source}", quiet
         )
-        raise typer.Exit(code=1)
-    except ValueError as e:
+        raise typer.Exit(code=1) from None
+    except ValueError:
         console_print("[bold red]Invalid specification file", quiet)
-        raise typer.Exit(code=1)
-    except ConnectionError as e:
+        raise typer.Exit(code=1) from None
+    except ConnectionError:
         console_print("[bold red]Failed to connect to Redshift Database", quiet)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None
 
     return spec
 
 
 def validate_spec(
     spec: Specification, quiet: bool, json: bool
-) -> tuple[bool, Optional[list[ValidationFailure]]]:
+) -> tuple[bool, list[ValidationFailure] | None]:
     with console_status("Validating configuration...", quiet):
         success, failures = spec.validate()
 

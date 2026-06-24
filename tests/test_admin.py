@@ -290,7 +290,9 @@ def test_group_management_operation_invalid(group):
 def test_trainer_revoke_removes_extra_user_privilege():
     """Trainer should emit REVOKE for privileges in current but not in desired."""
     priv = Privilege(
-        database_object=DatabaseObject(name="secret_table", type=DatabaseObjectType.TABLE),
+        database_object=DatabaseObject(
+            name="secret_table", type=DatabaseObjectType.TABLE
+        ),
         action=Action.SELECT,
     )
     current_user = User(name="alice", is_superuser=False, privileges=Privileges([priv]))
@@ -311,7 +313,9 @@ def test_trainer_revoke_removes_extra_user_privilege():
 def test_trainer_revoke_removes_extra_group_privilege():
     """Trainer should emit REVOKE for group privileges in current but not in desired."""
     priv = Privilege(
-        database_object=DatabaseObject(name="secret_table", type=DatabaseObjectType.TABLE),
+        database_object=DatabaseObject(
+            name="secret_table", type=DatabaseObjectType.TABLE
+        ),
         action=Action.SELECT,
     )
     current_group = Group(name="analysts", privileges=Privileges([priv]))
@@ -332,7 +336,9 @@ def test_trainer_revoke_removes_extra_group_privilege():
 def test_trainer_no_revoke_for_desired_privilege():
     """Trainer should NOT emit REVOKE for privileges that are in the desired spec."""
     priv = Privilege(
-        database_object=DatabaseObject(name="allowed_table", type=DatabaseObjectType.TABLE),
+        database_object=DatabaseObject(
+            name="allowed_table", type=DatabaseObjectType.TABLE
+        ),
         action=Action.SELECT,
     )
     user = User(name="alice", is_superuser=False, privileges=Privileges([priv]))
@@ -353,7 +359,9 @@ def test_schema_wildcard_grant_expands_to_all_schemas():
         database_object=DatabaseObject(name="mydb.*", type=DatabaseObjectType.SCHEMA),
         action=Action.USAGE,
     )
-    user = User(name="alice", is_superuser=False, privileges=Privileges([wildcard_priv]))
+    user = User(
+        name="alice", is_superuser=False, privileges=Privileges([wildcard_priv])
+    )
 
     current_spec = Specification(
         users=[User(name="alice", is_superuser=False, privileges=Privileges([]))],
@@ -376,11 +384,15 @@ def test_schema_wildcard_grant_expands_to_all_schemas():
 def test_schema_wildcard_revoke_removes_all_schemas():
     """Removing a wildcard schema privilege revokes each individual schema."""
     public_priv = Privilege(
-        database_object=DatabaseObject(name="mydb.public", type=DatabaseObjectType.SCHEMA),
+        database_object=DatabaseObject(
+            name="mydb.public", type=DatabaseObjectType.SCHEMA
+        ),
         action=Action.USAGE,
     )
     analytics_priv = Privilege(
-        database_object=DatabaseObject(name="mydb.analytics", type=DatabaseObjectType.SCHEMA),
+        database_object=DatabaseObject(
+            name="mydb.analytics", type=DatabaseObjectType.SCHEMA
+        ),
         action=Action.USAGE,
     )
     current_user = User(
@@ -412,7 +424,9 @@ def test_schema_wildcard_no_expand_without_schema_names():
         database_object=DatabaseObject(name="mydb.*", type=DatabaseObjectType.SCHEMA),
         action=Action.USAGE,
     )
-    user = User(name="alice", is_superuser=False, privileges=Privileges([wildcard_priv]))
+    user = User(
+        name="alice", is_superuser=False, privileges=Privileges([wildcard_priv])
+    )
 
     trainer = DatabaseAdministratorTrainer(
         desired_spec=Specification(users=[user], groups=[]),
@@ -436,34 +450,34 @@ def test_operation_dispatch():
             return "CREATE"
 
         @dispatch.register(Operation.DROP)
-        def handle_create(self) -> str:
+        def handle_drop(self) -> str:
             return "DROP"
 
         @dispatch.register(Operation.ADD_TO_GROUP)
-        def handle_create(self) -> str:
+        def handle_add_to_group(self) -> str:
             return "ADD_TO_GROUP"
 
         @dispatch.register(Operation.DROP_FROM_GROUP)
-        def handle_create(self) -> str:
+        def handle_drop_from_group(self) -> str:
             return "DROP_FROM_GROUP"
 
         @dispatch.register(Operation.GRANT)
-        def handle_create(self) -> str:
+        def handle_grant(self) -> str:
             return "GRANT"
 
         @dispatch.register(Operation.ALTER_OWNER)
-        def handle_create(self) -> str:
+        def handle_alter_owner(self) -> str:
             return "ALTER_OWNER"
 
-    assert "CREATE" == FakeManagementOperation(Operation.CREATE).dispatch()
-    assert "DROP" == FakeManagementOperation(Operation.DROP).dispatch()
-    assert "ADD_TO_GROUP" == FakeManagementOperation(Operation.ADD_TO_GROUP).dispatch()
+    assert FakeManagementOperation(Operation.CREATE).dispatch() == "CREATE"
+    assert FakeManagementOperation(Operation.DROP).dispatch() == "DROP"
+    assert FakeManagementOperation(Operation.ADD_TO_GROUP).dispatch() == "ADD_TO_GROUP"
     assert (
-        "DROP_FROM_GROUP"
-        == FakeManagementOperation(Operation.DROP_FROM_GROUP).dispatch()
+        FakeManagementOperation(Operation.DROP_FROM_GROUP).dispatch()
+        == "DROP_FROM_GROUP"
     )
-    assert "GRANT" == FakeManagementOperation(Operation.GRANT).dispatch()
-    assert "ALTER_OWNER" == FakeManagementOperation(Operation.ALTER_OWNER).dispatch()
+    assert FakeManagementOperation(Operation.GRANT).dispatch() == "GRANT"
+    assert FakeManagementOperation(Operation.ALTER_OWNER).dispatch() == "ALTER_OWNER"
 
 
 def test_user_management_operation_create_no_password():
