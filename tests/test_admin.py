@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest import mock
+
 import pytest
 
 from redtape.admin import (
@@ -649,3 +651,28 @@ def test_prepare_subject_privileges_invalid_operation(user):
     )
     with pytest.raises(TypeError):
         trainer.prepare_subject_privileges(user, [], [], Operation.CREATE)
+
+
+def test_train_includes_operation_for_truthy_non_true_filter():
+    """A filter returning a truthy non-True value should include the operation.
+
+    Regression test for issue #16: ``train`` previously gated each operation on
+    ``filter_operations(...) is True``, so a callback returning a truthy
+    non-``True`` value (e.g. ``1``) silently skipped the operation.
+    """
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[], groups=[]),
+        current_spec=Specification(users=[], groups=[]),
+        filter_operations=lambda operation: 1 if operation is Operation.CREATE else 0,
+    )
+
+    with (
+        mock.patch.object(trainer, "prepare_create_subjects") as prepare_create,
+        mock.patch.object(trainer, "prepare_drop_subjects") as prepare_drop,
+    ):
+        trainer.train()
+
+    # CREATE filter returned 1 (truthy) -> operation must be included.
+    prepare_create.assert_called_once()
+    # DROP filter returned 0 (falsy) -> operation must be skipped.
+    prepare_drop.assert_not_called()
