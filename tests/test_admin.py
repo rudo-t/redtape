@@ -269,6 +269,19 @@ def test_group_management_operation_grant_without_privilege_raises_typeerror(gro
         op.build_query()
 
 
+def test_group_management_operation_repr(group):
+    """repr() on a GroupManagementOperation should not raise (issue #14)."""
+    op = GroupManagementOperation(
+        operation=Operation.CREATE,
+        subject=group,
+        privilege=None,
+    )
+    result = repr(op)
+    assert result.startswith("GroupManagementOperation(")
+    assert "operation=" in result
+    assert "subject=" in result
+
+
 def test_group_management_operation_invalid(group):
     """Test the build_query method for an invalid Group operation."""
     invalid_1 = GroupManagementOperation(
