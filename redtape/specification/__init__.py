@@ -11,7 +11,7 @@ from collections.abc import Callable
 from enum import Enum
 from functools import singledispatch, wraps
 from itertools import groupby
-from typing import Any, TypeVar
+from typing import Any
 
 import cattrs
 import yaml
@@ -136,10 +136,7 @@ def _(value: Enum, attr, inst) -> str:
     return value.name.lower()
 
 
-T = TypeVar("T")
-
-
-def add_method(cls_list: list[T], mod=None):
+def add_method[T](cls_list: list[T], mod=None):
     """Decorate a function to attach it to many classes."""
 
     def decorator(func: Callable):
@@ -167,19 +164,19 @@ def filter_none(attr, value) -> bool:
 
 
 @add_method([Specification, User, Group])
-def to_dict(self: T) -> dict[str, Any]:
+def to_dict[T](self: T) -> dict[str, Any]:
     """Serialize self to dictionary using attrs.asdict"""
     return asdict(self, filter=filter_none, value_serializer=value_serializer)
 
 
 @add_method([Specification, User, Group])
-def to_yaml(self: T) -> str:
+def to_yaml[T](self: T) -> str:
     """Dump to YAML string after serializing to dictionary."""
     return yaml.safe_dump(self.to_dict())
 
 
 @add_method([Specification, User, Group])
-def to_json(self: T) -> str:
+def to_json[T](self: T) -> str:
     """Dump to JSON string after serializing to dictionary."""
     return json.dumps(self.to_dict())
 
@@ -269,18 +266,18 @@ _converter.register_unstructure_hook(
 
 
 @add_method([Specification, User, Group], mod=classmethod)
-def from_dict(cls: T, d: dict[str, Any]) -> T:
+def from_dict[T](cls: T, d: dict[str, Any]) -> T:
     """Initialize a class from a Dictionary."""
     return _converter.structure(d, cls)
 
 
 @add_method([Specification, User, Group], mod=classmethod)
-def from_yaml(cls: T, s: str) -> T:
+def from_yaml[T](cls: T, s: str) -> T:
     """Initialize a class by loading a YAML string."""
     return cls.from_dict(yaml.safe_load(s))
 
 
 @add_method([Specification, User, Group], mod=classmethod)
-def from_json(cls: T, s: str):
+def from_json[T](cls: T, s: str):
     """Initialize a class by loading a JSON string."""
     return cls.from_dict(json.loads(s))
