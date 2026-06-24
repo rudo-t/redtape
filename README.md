@@ -61,6 +61,25 @@ Options:
   --help                          Show this message and exit.
 ```
 
+## Development
+
+Install dev dependencies once with `uv sync --group dev`, then run tools through `uv` so they resolve against the locked environment (don't call bare `pytest`/`ruff`/`mypy`):
+
+```sh
+# Tests
+uv run --with pytest pytest tests/ -q                              # unit tests
+uv run --with pytest pytest tests/ --cov=redtape --cov-report=term-missing
+uv run --with pytest pytest tests/integration/ -m integration -v   # needs a live cluster (docker compose up -d)
+
+# Quality (must be clean before opening a PR)
+uv run --with ruff ruff check .          # lint + import sort + format checks
+uv run --with ruff ruff format .         # apply formatting
+uv run --with mypy mypy redtape/         # strict type check
+uv run --with vulture vulture redtape/ whitelist.py --min-confidence 80
+```
+
+The integration tests require a running Redshift-compatible database and are skipped by the unit run. See `AGENTS.md` for the full tooling conventions and `docs/adr/0002-code-quality-toolchain.md` for the rationale.
+
 ## Specification file
 
 A YAML specification file is used to define groups, users, and their corresponding privileges.
