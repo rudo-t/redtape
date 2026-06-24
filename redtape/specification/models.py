@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import itertools
 import operator
+from collections.abc import Iterator
 from enum import Enum
-from typing import Iterator, List, Optional, Set, Union
 
 import attrs
 
@@ -117,9 +117,7 @@ class DatabaseObject:
     @property
     def parts(
         self,
-    ) -> tuple[
-        Optional[DatabaseObject], Optional[DatabaseObject], Optional[DatabaseObject]
-    ]:
+    ) -> tuple[DatabaseObject | None, DatabaseObject | None, DatabaseObject | None]:
         """Split this object into individual DatabaseObject, if possible.
 
         A DatabaseObject can be split if it's name contains '.', for example:
@@ -165,7 +163,7 @@ class DatabaseObject:
 
     def is_wildcard(self) -> bool:
         """Return True if this object is a wildcard."""
-        return "*" == self.name
+        return self.name == "*"
 
     def has_wildcard_part(self, _type: DatabaseObjectType) -> bool:
         """Return True if this object has a wildcard on a given part.
@@ -177,13 +175,10 @@ class DatabaseObject:
         >>> my_obj.has_wildcard_part(DatabaseObjectType.SCHEMA)
         False
         """
-        db_obj, schema_obj, obj = self.parts
         return any(
-            (
-                p
-                for p in self.parts
-                if p is not None and p._type == _type and p.is_wildcard()
-            )
+            p
+            for p in self.parts
+            if p is not None and p._type == _type and p.is_wildcard()
         )
 
     def __str__(self):
@@ -193,9 +188,9 @@ class DatabaseObject:
 @attrs.frozen(hash=True, slots=True)
 class Privilege:
     database_object: DatabaseObject
-    action: Optional[Action] = None
+    action: Action | None = None
 
-    def validate(self) -> tuple[bool, Optional[list[ValidationFailure]]]:
+    def validate(self) -> tuple[bool, list[ValidationFailure] | None]:
         if self.action is None:
             return True, None
 
@@ -234,7 +229,7 @@ class Operation(Enum):
 
 @attrs.frozen(hash=True)
 class ValidationFailure:
-    subject: Union[DatabaseObject, User, Group, Password]
+    subject: DatabaseObject | User | Group | Password
     message: str
 
 
@@ -250,8 +245,8 @@ class PasswordType(Enum):
 @attrs.define(slots=True)
 class Password:
     _type: PasswordType
-    value: Optional[str] = None
-    salt: Optional[str] = None
+    value: str | None = None
+    salt: str | None = None
 
     @property
     def name(self):
@@ -272,7 +267,7 @@ class Password:
         else:
             raise TypeError("Password type: {self._type} is not supported.")
 
-    def validate(self) -> tuple[bool, Optional[list[ValidationFailure]]]:
+    def validate(self) -> tuple[bool, list[ValidationFailure] | None]:
         failures = []
         success = True
 
@@ -335,7 +330,7 @@ class Ownerships(set):
 @attrs.define(slots=True)
 class Group:
     name: str
-    privileges: Optional[Privileges] = None
+    privileges: Privileges | None = None
 
     def __eq__(self, other) -> bool:
         if isinstance(other, str):
@@ -354,7 +349,7 @@ class Group:
         except AttributeError:
             self.privileges = Privileges((privilege,))
 
-    def validate(self) -> tuple[bool, Optional[list[ValidationFailure]]]:
+    def validate(self) -> tuple[bool, list[ValidationFailure] | None]:
         if self.privileges is None:
             return True, None
 
@@ -387,10 +382,10 @@ class User:
 
     name: str
     is_superuser: bool
-    member_of: Optional[Set[str]] = None
-    password: Optional[Password] = None
-    privileges: Optional[Privileges] = None
-    owns: Optional[Ownerships] = None
+    member_of: set[str] | None = None
+    password: Password | None = None
+    privileges: Privileges | None = None
+    owns: Ownerships | None = None
 
     def __eq__(self, other) -> bool:
         if isinstance(other, str):
@@ -427,7 +422,7 @@ class User:
         except AttributeError:
             self.owns = Ownerships((db_obj,))
 
-    def validate(self) -> tuple[bool, Optional[list[ValidationFailure]]]:
+    def validate(self) -> tuple[bool, list[ValidationFailure] | None]:
         if self.privileges is None:
             return True, None
 
@@ -455,8 +450,8 @@ class User:
 
 @attrs.define(slots=True)
 class Specification:
-    users: Optional[List[User]] = None
-    groups: Optional[List[Group]] = None
+    users: list[User] | None = None
+    groups: list[Group] | None = None
     schema_names: dict = attrs.field(factory=dict, eq=False, hash=False)
 
     def __attrs_post_init__(self):
@@ -570,7 +565,7 @@ class Specification:
                 is_superuser=user_row.usesuper,
                 privileges=None,
                 owns=None,
-                member_of=group_members.get(user_row.usesysid, None),
+                member_of=group_members.get(user_row.usesysid),
             )
             users.append(user)
 
@@ -607,7 +602,7 @@ class Specification:
                 ]
             yield user, groups
 
-    def validate(self) -> tuple[bool, Optional[list[ValidationFailure]]]:
+    def validate(self) -> tuple[bool, list[ValidationFailure] | None]:
         """Validate this configuration.
 
         Returns:
@@ -621,7 +616,6 @@ class Specification:
             failures = []
 
         for user in self.users:
-
             _, user_failures = user.validate()
             if user_failures is not None:
                 try:
@@ -630,7 +624,6 @@ class Specification:
                     failures = user_failures
 
         for group in self.groups:
-
             _, group_failures = group.validate()
             if group_failures is not None:
                 try:
@@ -644,7 +637,7 @@ class Specification:
 
     def check_users_belong_to_existing_groups(
         self,
-    ) -> tuple[bool, Optional[list[ValidationFailure]]]:
+    ) -> tuple[bool, list[ValidationFailure] | None]:
         """Check Users are members of Groups in this Specification.
 
         Specification should contain all users and groups. Which means

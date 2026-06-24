@@ -9,7 +9,6 @@ from redtape.specification import (
     Action,
     DatabaseObject,
     DatabaseObjectType,
-    Group,
     Password,
     PasswordType,
     Privilege,
@@ -55,4 +54,6 @@ def test_grant_privilege_applied(connector):
 @pytest.mark.integration
 def test_revoke_privilege_removed(connector):
     """REVOKE operation removes a privilege that was previously granted out-of-band."""
-    pytest.skip("requires real Redshift cluster for full out-of-band grant verification")
+    pytest.skip(
+        "requires real Redshift cluster for full out-of-band grant verification"
+    )

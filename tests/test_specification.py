@@ -412,8 +412,7 @@ class FakeRedshiftConnector:
                 remarks=None,
             ),
         ]
-        for table in tables:
-            yield table
+        yield from tables
 
     def iter_schemas(self):
         """Iterate over fake schemas."""
@@ -446,8 +445,7 @@ class FakeRedshiftConnector:
                 schema_option=None,
             ),
         ]
-        for schema in schemas:
-            yield schema
+        yield from schemas
 
     def iter_databases(self):
         """Iterate over fake databases."""
@@ -463,8 +461,7 @@ class FakeRedshiftConnector:
                 database_acl="{dev_analyst=CT/prod_admin}",
             ),
         ]
-        for database in databases:
-            yield database
+        yield from databases
 
     def iter_users(self):
         """Iterate over fake users."""
@@ -498,8 +495,7 @@ class FakeRedshiftConnector:
             ),
         ]
 
-        for user in users:
-            yield user
+        yield from users
 
     def iter_groups(self):
         """Iterate over fake groups."""
@@ -521,8 +517,7 @@ class FakeRedshiftConnector:
             ),
         ]
 
-        for group in groups:
-            yield group
+        yield from groups
 
 
 def test_specification_from_redshift_connector_users_created():
@@ -532,7 +527,7 @@ def test_specification_from_redshift_connector_users_created():
 
     assert len(spec.users) == 3
 
-    users = set((user.name for user in spec.users))
+    users = set(user.name for user in spec.users)
     assert users == {"dev_analyst", "prod_analyst", "prod_admin"}
 
     superusers = [user for user in spec.users if user.is_superuser is True]
@@ -562,7 +557,7 @@ def test_specification_from_redshift_connector_user_memberships():
 
     assert len(spec.groups) == 3
 
-    groups = set((group.name for group in spec.groups))
+    groups = set(group.name for group in spec.groups)
     assert groups == {"prod_analytics", "consumer_analytics", "everyone"}
 
 
@@ -699,7 +694,7 @@ def test_specification_from_redshift_connector_groups_created():
 
     assert len(spec.groups) == 3
 
-    groups = set((group.name for group in spec.groups))
+    groups = set(group.name for group in spec.groups)
     assert groups == {"prod_analytics", "consumer_analytics", "everyone"}
 
 
@@ -712,14 +707,18 @@ def test_database_object_from_parts_one_arg():
 
 def test_database_object_from_parts_two_args():
     """from_parts with two args joins them with a dot."""
-    db_obj = DatabaseObject.from_parts("mydb", "my_schema", type=DatabaseObjectType.SCHEMA)
+    db_obj = DatabaseObject.from_parts(
+        "mydb", "my_schema", type=DatabaseObjectType.SCHEMA
+    )
     assert db_obj.name == "mydb.my_schema"
     assert db_obj._type == DatabaseObjectType.SCHEMA
 
 
 def test_database_object_from_parts_three_args():
     """from_parts with three args builds a fully-qualified name."""
-    db_obj = DatabaseObject.from_parts("mydb", "my_schema", "my_table", type=DatabaseObjectType.TABLE)
+    db_obj = DatabaseObject.from_parts(
+        "mydb", "my_schema", "my_table", type=DatabaseObjectType.TABLE
+    )
     assert db_obj.name == "mydb.my_schema.my_table"
     assert db_obj._type == DatabaseObjectType.TABLE
 
@@ -744,7 +743,9 @@ def test_database_object_parts_two_levels():
 
 def test_database_object_parts_three_levels():
     """parts returns (db, schema, table) for a three-segment name."""
-    db_obj = DatabaseObject(name="mydb.my_schema.my_table", type=DatabaseObjectType.TABLE)
+    db_obj = DatabaseObject(
+        name="mydb.my_schema.my_table", type=DatabaseObjectType.TABLE
+    )
     db_part, schema_part, obj_part = db_obj.parts
     assert db_part == DatabaseObject("mydb", DatabaseObjectType.DATABASE)
     assert schema_part == DatabaseObject("my_schema", DatabaseObjectType.SCHEMA)
@@ -754,12 +755,17 @@ def test_database_object_parts_three_levels():
 def test_database_object_is_wildcard():
     """is_wildcard returns True only for the bare '*' name."""
     assert DatabaseObject(name="*", type=DatabaseObjectType.TABLE).is_wildcard() is True
-    assert DatabaseObject(name="my_table", type=DatabaseObjectType.TABLE).is_wildcard() is False
+    assert (
+        DatabaseObject(name="my_table", type=DatabaseObjectType.TABLE).is_wildcard()
+        is False
+    )
 
 
 def test_database_object_has_wildcard_part():
     """has_wildcard_part detects wildcards at the correct segment level."""
-    table_wildcard = DatabaseObject(name="mydb.my_schema.*", type=DatabaseObjectType.TABLE)
+    table_wildcard = DatabaseObject(
+        name="mydb.my_schema.*", type=DatabaseObjectType.TABLE
+    )
     assert table_wildcard.has_wildcard_part(DatabaseObjectType.TABLE) is True
     assert table_wildcard.has_wildcard_part(DatabaseObjectType.SCHEMA) is False
     assert table_wildcard.has_wildcard_part(DatabaseObjectType.DATABASE) is False
@@ -904,7 +910,9 @@ def test_user_validate_invalid_privilege():
 def test_user_validate_invalid_password():
     """User.validate propagates password validation failures."""
     pw = Password(type=PasswordType.PLAIN, value="weak", salt=None)
-    user = User(name="alice", is_superuser=False, privileges=Privileges([]), password=pw)
+    user = User(
+        name="alice", is_superuser=False, privileges=Privileges([]), password=pw
+    )
     success, failures = user.validate()
     assert success is False
     assert failures is not None
@@ -914,7 +922,9 @@ def test_group_add_privilege_creates_set():
     """Group.add_privilege creates a Privileges set when privileges is None."""
     group = Group(name="analysts")
     priv = Privilege(
-        database_object=DatabaseObject(name="my_schema", type=DatabaseObjectType.SCHEMA),
+        database_object=DatabaseObject(
+            name="my_schema", type=DatabaseObjectType.SCHEMA
+        ),
         action=Action.USAGE,
     )
     assert group.privileges is None
