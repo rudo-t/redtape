@@ -281,7 +281,7 @@ class Password:
                 failures.append(
                     ValidationFailure(
                         subject=self,
-                        message="Password must be between 8 and 64 characters, not {len(self.value)}",
+                        message=f"Password must be between 8 and 64 characters, not {len(self.value)}",
                     )
                 )
                 success = False
