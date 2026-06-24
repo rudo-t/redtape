@@ -806,6 +806,13 @@ def test_password_str_sha256():
     assert str(pw) == "sha256|deadbeef"
 
 
+def test_password_str_sha256_with_salt():
+    pw = Password(type=PasswordType.SHA256, value="deadbeef", salt="abc")
+    result = str(pw)
+    assert result.endswith("|abc")
+    assert "{self.salt}" not in result
+
+
 def test_password_str_disabled():
     pw = Password(type=PasswordType.DISABLED)
     assert str(pw) == "DISABLED"
