@@ -826,6 +826,16 @@ def test_password_validate_too_short():
     assert failures is not None
 
 
+def test_password_validate_length_message_interpolates():
+    """Out-of-range password length appears as an integer in the error message."""
+    value = "Sh0rt"
+    pw = Password(type=PasswordType.PLAIN, value=value, salt=None)
+    success, failures = pw.validate()
+    assert success is False
+    assert any(str(len(value)) in f.message for f in failures)
+    assert not any("{len(self.value)}" in f.message for f in failures)
+
+
 def test_password_validate_no_uppercase():
     """PLAIN password with no uppercase char fails validation."""
     pw = Password(type=PasswordType.PLAIN, value="secret1234", salt=None)
