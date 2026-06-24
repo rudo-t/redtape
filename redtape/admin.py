@@ -254,8 +254,7 @@ class GroupManagementOperation(ManagementOperation):
     def __repr__(self):
         return (
             f"GroupManagementOperation(operation={self.operation}, "
-            f"subject={self.subject}, privilege={self.privilege}, "
-            f"group={self.group})"
+            f"subject={self.subject}, privilege={self.privilege})"
         )
 
     @build_query.register(Operation.CREATE)
