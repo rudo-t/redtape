@@ -201,6 +201,50 @@ def test_user_management_operation_grant_without_privilege_raises_typeerror(user
         op.build_query()
 
 
+@pytest.mark.parametrize(
+    ("object_type", "object_name", "expected"),
+    [
+        (
+            DatabaseObjectType.TABLE,
+            "my_db.my_schema.my_table",
+            "ALTER TABLE my_db.my_schema.my_table OWNER TO test_user_1;",
+        ),
+        (
+            DatabaseObjectType.SCHEMA,
+            "my_db.my_schema",
+            "ALTER SCHEMA my_db.my_schema OWNER TO test_user_1;",
+        ),
+        (
+            DatabaseObjectType.DATABASE,
+            "my_db",
+            "ALTER DATABASE my_db OWNER TO test_user_1;",
+        ),
+    ],
+)
+def test_user_management_operation_alter_owner(user, object_type, object_name, expected):
+    """Test the build_query method for an ALTER_OWNER operation."""
+    op = UserManagementOperation(
+        operation=Operation.ALTER_OWNER,
+        subject=user,
+        database_object=DatabaseObject(name=object_name, type=object_type),
+    )
+
+    result = op.build_query()
+
+    assert result == expected
+
+
+def test_user_management_operation_alter_owner_requires_database_object(user):
+    """ALTER_OWNER without a DatabaseObject should raise a TypeError."""
+    op = UserManagementOperation(
+        operation=Operation.ALTER_OWNER,
+        subject=user,
+    )
+
+    with pytest.raises(TypeError):
+        op.build_query()
+
+
 def test_group_management_operation_create(group):
     """Test the build_query method for a CREATE operation."""
     op = GroupManagementOperation(
