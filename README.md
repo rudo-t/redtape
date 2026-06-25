@@ -36,6 +36,9 @@ Arguments:
 Options:
   --dry / --no-dry                Print changes but do not run them.
                                   [default: no-dry]
+  --atomic / --no-atomic          Apply the entire run in a single
+                                  transaction: abort on the first error and
+                                  roll back every change.  [default: no-atomic]
   --skip-validate / --no-skip-validate
                                   Skip specification file validation.
                                   [default: no-skip-validate]
@@ -60,6 +63,30 @@ Options:
                                   quiet]
   --help                          Show this message and exit.
 ```
+
+### Transactional behavior and partial failures
+
+> **⚠️ Without `--atomic`, a failed run can leave your cluster partially changed.**
+
+By default (`--no-atomic`) Redtape applies a run as a best-effort sequence of
+statements: it tries to keep going past a failing statement and reports which
+ones failed at the end. Once a statement fails, however, the database session's
+transaction is aborted, so statements that ran *before* the failure are **not**
+durably applied and statements *after* it are skipped. In short: a partially
+specified run leaves the cluster in an inconsistent, hard-to-reason-about state,
+and Redtape will not automatically retry or clean up.
+
+Use `--atomic` to make the whole run a single transaction:
+
+```sh
+redtape run --atomic my-spec.yml
+```
+
+With `--atomic` Redtape aborts on the **first** error and rolls back every
+change made during the run, so the cluster is left exactly as it was before the
+run started. The command exits non-zero and names the operation that failed.
+Prefer `--atomic` for unattended or production runs where a half-applied
+specification is worse than no change at all.
 
 ## Development
 
