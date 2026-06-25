@@ -341,6 +341,7 @@ class DatabaseConnector:
 
     def __init__(self):
         self._connection = None
+        self._connect_depth = 0
 
     @abstractmethod
     def open_connection(self):
@@ -443,9 +444,16 @@ class RedshiftConnector(DatabaseConnector):
 
     @contextmanager
     def connect(self):
-        """A context manager to handle the underlying Redshift connection."""
+        """A context manager to handle the underlying Redshift connection.
+
+        This is reentrant: nested connect() calls reuse the same physical
+        connection. Only the outermost call opens (one handshake) and
+        commits/closes it on exit.
+        """
         if self._connection is None or self._connection.closed != 0:
             self.open_connection()
+        self._connect_depth += 1
+        is_outermost = self._connect_depth == 1
         try:
             yield self
 
@@ -454,10 +462,22 @@ class RedshiftConnector(DatabaseConnector):
             raise e
 
         else:
-            self._connection.commit()
+            if is_outermost:
+                self._connection.commit()
 
         finally:
-            self._connection.close()
+            self._connect_depth -= 1
+            if is_outermost:
+                self._connection.close()
+
+    @contextmanager
+    def _active_connection(self):
+        """Yield a connected self, reusing an already-open connection if present."""
+        if self._connection is not None and self._connection.closed == 0:
+            yield self
+        else:
+            with self.connect():
+                yield self
 
     def open_connection(self):
         try:
@@ -493,7 +513,7 @@ class RedshiftConnector(DatabaseConnector):
         if ignore_admin is True:
             query += "WHERE usesysid != 1"
 
-        with self.connect() as conn:
+        with self._active_connection() as conn:
             for row in conn.run_query_and_iter_rows(query):
                 yield User(**row._asdict())
 
@@ -508,7 +528,7 @@ class RedshiftConnector(DatabaseConnector):
         FROM pg_catalog.pg_group
         """
 
-        with self.connect() as conn:
+        with self._active_connection() as conn:
             for row in conn.run_query_and_iter_rows(query):
                 yield Group(**row._asdict())
 
@@ -525,7 +545,7 @@ class RedshiftConnector(DatabaseConnector):
         if ignore_admin is True:
             query += "WHERE usesysid != 1"
 
-        with self.connect() as conn:
+        with self._active_connection() as conn:
             for row in conn.run_query_and_iter_rows(query):
                 yield Database(**row._asdict())
 
@@ -542,7 +562,7 @@ class RedshiftConnector(DatabaseConnector):
         if ignore_system is True:
             query += "WHERE s.schema_name NOT IN ('information_schema', 'pg_catalog')"
 
-        with self.connect() as conn:
+        with self._active_connection() as conn:
             for row in conn.run_query_and_iter_rows(query):
                 yield Schema(**row._asdict())
 
