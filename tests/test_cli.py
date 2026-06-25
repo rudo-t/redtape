@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from unittest import mock
+
 import pytest
 import yaml
 from typer.testing import CliRunner
 
+from redtape.admin import OnError
 from redtape.cli import app
 
 runner = CliRunner()
@@ -91,3 +94,54 @@ def test_validate_json_on_invalid_spec(tmp_path):
     )
     result = runner.invoke(app, ["validate", "--json", str(spec_path)])
     assert result.exit_code == 1
+
+
+def _patched_run(monkeypatch):
+    """Patch the run command's DB-touching collaborators.
+
+    Returns the Mock standing in for ``admin.manage`` so callers can assert
+    how the command invoked it (in particular, the ``on_error`` argument).
+    """
+    manage = mock.Mock(return_value=(True, []))
+    admin = mock.Mock()
+    admin.manage = manage
+    admin.ops = [mock.Mock()]
+    admin.queries = mock.Mock(return_value=[("SELECT 1", admin.ops[0])])
+
+    trainer = mock.Mock()
+    trainer.train = mock.Mock(return_value=admin)
+
+    monkeypatch.setattr(
+        "redtape.cli.DatabaseAdministratorTrainer",
+        mock.Mock(return_value=trainer),
+    )
+    monkeypatch.setattr("redtape.cli.RedshiftConnector", mock.Mock())
+    monkeypatch.setattr(
+        "redtape.cli.load_spec",
+        mock.Mock(return_value=mock.Mock()),
+    )
+    monkeypatch.setattr(
+        "redtape.cli.validate_spec",
+        mock.Mock(return_value=(True, None)),
+    )
+    return manage
+
+
+def test_run_default_uses_on_error_continue(valid_spec_file, monkeypatch):
+    """Without --atomic, run applies queries with OnError.CONTINUE."""
+    manage = _patched_run(monkeypatch)
+
+    result = runner.invoke(app, ["run", str(valid_spec_file)])
+
+    assert result.exit_code == 0
+    assert manage.call_args.kwargs["on_error"] is OnError.CONTINUE
+
+
+def test_run_atomic_uses_on_error_abort(valid_spec_file, monkeypatch):
+    """--atomic makes run apply queries with OnError.ABORT for rollback."""
+    manage = _patched_run(monkeypatch)
+
+    result = runner.invoke(app, ["run", "--atomic", str(valid_spec_file)])
+
+    assert result.exit_code == 0
+    assert manage.call_args.kwargs["on_error"] is OnError.ABORT

@@ -35,7 +35,9 @@ def connector():
     """Return a RedshiftConnector pointed at the test database."""
     from redtape.connectors import RedshiftConnector
 
-    return RedshiftConnector.from_dsn(INTEGRATION_DSN)
+    # INTEGRATION_DSN is a libpq keyword/value string, which psycopg2's
+    # parse_dsn (used by RedshiftConnector.parse_db_url via db_url) understands.
+    return RedshiftConnector(db_url=INTEGRATION_DSN)
 
 
 @pytest.fixture(autouse=True)

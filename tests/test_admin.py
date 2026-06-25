@@ -18,6 +18,7 @@ from redtape.admin import (
     OperationDispatch,
     UserManagementOperation,
 )
+from redtape.connectors import RedshiftConnector
 from redtape.specification import (
     Action,
     DatabaseObject,
@@ -989,3 +990,98 @@ def test_manage_closes_connection_after_loop():
 
     assert connector.closed is True
     assert connector.connect_count == 1
+
+
+class _FakeCursor:
+    """A minimal psycopg2 cursor stand-in that fails on configured queries."""
+
+    def __init__(self, fail_on: set[str]):
+        self.fail_on = fail_on
+        self.rowcount = -1
+
+    def execute(self, query: str):
+        if query in self.fail_on:
+            raise psycopg2.Error(f"boom: {query}")
+
+    def fetchone(self):
+        return None
+
+    def close(self):
+        pass
+
+
+class _TransactionRecordingConnection:
+    """A psycopg2 connection stand-in that records commit/rollback calls.
+
+    Lets us assert the real RedshiftConnector.connect() transaction semantics
+    (commit on success, rollback on a propagated error) end to end through
+    DatabaseAdministrator.manage without a live database.
+    """
+
+    def __init__(self, fail_on: set[str] | None = None):
+        self.closed = 0
+        self.committed = False
+        self.rolled_back = False
+        self._fail_on = fail_on or set()
+
+    def cursor(self):
+        return _FakeCursor(self._fail_on)
+
+    def commit(self):
+        self.committed = True
+
+    def rollback(self):
+        self.rolled_back = True
+
+    def close(self):
+        self.closed = 1
+
+
+def _real_connector_with_connection(conn: _TransactionRecordingConnection):
+    """Build a real RedshiftConnector backed by a fake connection."""
+    connector = RedshiftConnector(
+        dbname="test",
+        host="localhost",
+        port=5439,
+        user="test",
+        password="hunter2A",
+    )
+
+    def fake_open_connection():
+        connector._connection = conn
+
+    connector.open_connection = fake_open_connection  # type: ignore[method-assign]
+    return connector
+
+
+def test_manage_atomic_abort_rolls_back_and_does_not_commit():
+    """OnError.ABORT rolls the whole run back via the real connect() transaction.
+
+    Acceptance for issue #18: when a later query fails, the first query's
+    effects must not be committed -- the run is rolled back as one transaction.
+    """
+    conn = _TransactionRecordingConnection(fail_on={"SELECT 2"})
+    connector = _real_connector_with_connection(conn)
+    admin = _administrator_with_queries(["SELECT 1", "SELECT 2", "SELECT 3"])
+
+    with pytest.raises(ManagementOperationError):
+        admin.manage(connector, on_error=OnError.ABORT)
+
+    assert conn.rolled_back is True
+    assert conn.committed is False
+    assert conn.closed == 1
+
+
+def test_manage_atomic_all_succeed_commits():
+    """OnError.ABORT commits when every query succeeds."""
+    conn = _TransactionRecordingConnection()
+    connector = _real_connector_with_connection(conn)
+    admin = _administrator_with_queries(["SELECT 1", "SELECT 2"])
+
+    success, errors = admin.manage(connector, on_error=OnError.ABORT)
+
+    assert success is True
+    assert errors == []
+    assert conn.committed is True
+    assert conn.rolled_back is False
+    assert conn.closed == 1
