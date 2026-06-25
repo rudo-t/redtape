@@ -66,11 +66,15 @@ def validate(
         False,
         help="Output validation errors as JSON.",
     ),
+    require_owner: bool = typer.Option(
+        False,
+        help="Fail validation if any object in the spec has no declared owner.",
+    ),
 ):
     """Validate a local specification and report any errors."""
     spec = load_spec(spec_file, quiet)
     console_print("Specification loaded!", quiet)
-    success, _ = validate_spec(spec, quiet, json)
+    success, _ = validate_spec(spec, quiet, json, require_owner)
 
     if success is False:
         raise typer.Exit(code=1)
@@ -304,10 +308,10 @@ def load_spec(
 
 
 def validate_spec(
-    spec: Specification, quiet: bool, json: bool
+    spec: Specification, quiet: bool, json: bool, require_owner: bool = False
 ) -> tuple[bool, list[ValidationFailure] | None]:
     with console_status("Validating configuration...", quiet):
-        success, failures = spec.validate()
+        success, failures = spec.validate(require_owner=require_owner)
 
     if success is True and failures is None:
         console_print("Validation successful!", quiet)

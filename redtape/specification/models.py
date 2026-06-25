@@ -613,8 +613,15 @@ class Specification:
                 ]
             yield user, groups
 
-    def validate(self) -> tuple[bool, list[ValidationFailure] | None]:
+    def validate(
+        self, require_owner: bool = False
+    ) -> tuple[bool, list[ValidationFailure] | None]:
         """Validate this configuration.
+
+        Args:
+            require_owner (bool): When True, validation fails unless every
+                DatabaseObject referenced by a privilege has a declared owner
+                (i.e. appears in some User's ``owns``).
 
         Returns:
             tuple: first value indicates whether validation was successful.
@@ -641,6 +648,56 @@ class Specification:
                     failures.extend(group_failures)
                 except AttributeError:
                     failures = group_failures
+
+        if require_owner is True:
+            _, owner_failures = self.check_objects_have_owners()
+            if owner_failures is not None:
+                failures.extend(owner_failures)
+
+        if len(failures) == 0:
+            return True, None
+        return False, failures
+
+    def check_objects_have_owners(
+        self,
+    ) -> tuple[bool, list[ValidationFailure] | None]:
+        """Check every privileged DatabaseObject has a declared owner.
+
+        An object is considered owned if it appears in some User's ``owns``.
+        Returns a ValidationFailure for each privileged object that is not.
+
+        Returns:
+            tuple: first value indicates whether the check succeeded. Second
+                value is a list of ValidationFailures, or None on success.
+        """
+        users = self.users if self.users is not None else []
+        groups = self.groups if self.groups is not None else []
+
+        owned: set[DatabaseObject] = set()
+        for user in users:
+            if user.owns is not None:
+                owned.update(user.owns)
+
+        failures: list[ValidationFailure] = []
+        seen: set[DatabaseObject] = set()
+
+        subjects: list[User | Group] = [*users, *groups]
+        for subject in subjects:
+            if subject.privileges is None:
+                continue
+
+            for privilege in subject.privileges:
+                db_obj = privilege.database_object
+                if db_obj in owned or db_obj in seen:
+                    continue
+
+                seen.add(db_obj)
+                failures.append(
+                    ValidationFailure(
+                        subject=db_obj,
+                        message=f"{db_obj} has no declared owner",
+                    )
+                )
 
         if len(failures) == 0:
             return True, None
