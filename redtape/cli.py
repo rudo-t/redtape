@@ -18,7 +18,11 @@ from rich.progress import Progress
 from rich.syntax import Syntax
 from rich.table import Table
 
-from redtape.admin import DatabaseAdministratorTrainer
+from redtape.admin import (
+    DatabaseAdministratorTrainer,
+    ManagementOperationError,
+    OnError,
+)
 from redtape.connectors import RedshiftConnector
 from redtape.specification import (
     Group,
@@ -119,6 +123,15 @@ def run(
     dry: bool = typer.Option(
         False,
         help="Print changes but do not run them.",
+    ),
+    atomic: bool = typer.Option(
+        False,
+        help=(
+            "Apply the entire run in a single transaction: abort on the first "
+            "error and roll back every change. Without this flag, each "
+            "successful query is committed even if a later query fails, "
+            "leaving the database partially applied."
+        ),
     ),
     skip_validate: bool = typer.Option(
         False,
@@ -232,13 +245,26 @@ def run(
         )
         query_progress.stop_task(query_task)
 
+    on_error = OnError.ABORT if atomic else OnError.CONTINUE
+
     with Live(progress_group):
-        success, errors = admin.manage(
-            connector,
-            before_callback=before_callback,
-            success_callback=success_callback,
-            on_error_callback=on_error_callback,
-        )
+        try:
+            success, errors = admin.manage(
+                connector,
+                before_callback=before_callback,
+                success_callback=success_callback,
+                on_error_callback=on_error_callback,
+                on_error=on_error,
+            )
+        except ManagementOperationError as exc:
+            main_progress.update(
+                main_task_id,
+                description=(
+                    "[bold red]Aborted: a query failed, the whole run was "
+                    f"rolled back ({exc.action})."
+                ),
+            )
+            raise typer.Exit(code=1) from exc
         if success is True:
             main_progress.update(
                 main_task_id,
