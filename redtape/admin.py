@@ -437,13 +437,13 @@ class DatabaseAdministratorTrainer:
 
     def prepare_create_subjects(self):
         self.prepare_subjects(
-            self.desired_groups, self.current.groups, Operation.CREATE
+            self.desired_groups, self.current_groups, Operation.CREATE
         )
-        self.prepare_subjects(self.desired_users, self.current.users, Operation.CREATE)
+        self.prepare_subjects(self.desired_users, self.current_users, Operation.CREATE)
 
     def prepare_drop_subjects(self):
-        self.prepare_subjects(self.desired.groups, self.current_groups, Operation.DROP)
-        self.prepare_subjects(self.desired.users, self.current_users, Operation.DROP)
+        self.prepare_subjects(self.desired_groups, self.current_groups, Operation.DROP)
+        self.prepare_subjects(self.desired_users, self.current_users, Operation.DROP)
 
     def prepare_subjects(
         self,

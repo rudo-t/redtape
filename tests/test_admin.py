@@ -671,6 +671,114 @@ def test_prepare_subject_privileges_invalid_operation(user):
         trainer.prepare_subject_privileges(user, [], [], Operation.CREATE)
 
 
+def test_create_filters_current_side_consistently_for_users():
+    """CREATE must diff the *filtered* current users, not the raw current users.
+
+    Regression for issue #17: ``prepare_create_subjects`` filtered the desired
+    side but subtracted the *raw* current side. When ``filter_users`` excludes a
+    current record (here a superuser) sharing a name with a managed desired
+    record, the raw current name wrongly cancelled the CREATE. Filtering both
+    sides means the managed (non-superuser) ``bob`` is still created.
+    """
+    desired_user = User(
+        name="bob",
+        is_superuser=False,
+        password=Password(type=PasswordType.PLAIN, value="Secret123", salt=None),
+    )
+    current_user = User(name="bob", is_superuser=True)
+
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[desired_user], groups=[]),
+        current_spec=Specification(users=[current_user], groups=[]),
+        filter_users=lambda u: not u.is_superuser,
+    )
+    admin = trainer.train()
+
+    create_ops = [op for op in admin.ops if op.operation is Operation.CREATE]
+    assert len(create_ops) == 1
+    assert create_ops[0].subject.name == "bob"
+
+
+def test_drop_filters_desired_side_consistently_for_users():
+    """DROP must diff the *filtered* desired users, not the raw desired users.
+
+    Regression for issue #17: ``prepare_drop_subjects`` filtered the current
+    side but subtracted the *raw* desired side. When ``filter_users`` excludes a
+    desired record (here a superuser) sharing a name with a managed current
+    record, the raw desired name wrongly cancelled the DROP. Filtering both
+    sides means the managed (non-superuser) ``bob`` is still dropped.
+    """
+    current_user = User(name="bob", is_superuser=False)
+    desired_user = User(name="bob", is_superuser=True)
+
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[desired_user], groups=[]),
+        current_spec=Specification(users=[current_user], groups=[]),
+        filter_users=lambda u: not u.is_superuser,
+    )
+    admin = trainer.train()
+
+    drop_ops = [op for op in admin.ops if op.operation is Operation.DROP]
+    assert len(drop_ops) == 1
+    assert drop_ops[0].subject.name == "bob"
+
+
+def test_create_filters_current_side_consistently_for_groups():
+    """CREATE for groups must diff the filtered current side (issue #17).
+
+    A ``filter_groups`` that excludes a current group sharing a name with a
+    managed desired group must not let the raw current name cancel the CREATE.
+    """
+    privileged = Privilege(
+        database_object=DatabaseObject(name="t", type=DatabaseObjectType.TABLE),
+        action=Action.SELECT,
+    )
+    desired_group = Group(name="analysts", privileges=Privileges([]))
+    current_group = Group(name="analysts", privileges=Privileges([privileged]))
+
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[], groups=[desired_group]),
+        current_spec=Specification(users=[], groups=[current_group]),
+        # Exclude any group that already carries privileges.
+        filter_groups=lambda g: not g.privileges,
+        # Avoid emitting REVOKE ops for the excluded current group.
+        filter_operations=lambda op: op is Operation.CREATE,
+    )
+    admin = trainer.train()
+
+    create_ops = [op for op in admin.ops if op.operation is Operation.CREATE]
+    assert len(create_ops) == 1
+    assert create_ops[0].subject.name == "analysts"
+
+
+def test_drop_filters_desired_side_consistently_for_groups():
+    """DROP for groups must diff the filtered desired side (issue #17).
+
+    A ``filter_groups`` that excludes a desired group sharing a name with a
+    managed current group must not let the raw desired name cancel the DROP.
+    """
+    privileged = Privilege(
+        database_object=DatabaseObject(name="t", type=DatabaseObjectType.TABLE),
+        action=Action.SELECT,
+    )
+    current_group = Group(name="analysts", privileges=Privileges([]))
+    desired_group = Group(name="analysts", privileges=Privileges([privileged]))
+
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=Specification(users=[], groups=[desired_group]),
+        current_spec=Specification(users=[], groups=[current_group]),
+        # Exclude any group that carries privileges (the desired record).
+        filter_groups=lambda g: not g.privileges,
+        # Restrict to DROP so only subject management is exercised.
+        filter_operations=lambda op: op is Operation.DROP,
+    )
+    admin = trainer.train()
+
+    drop_ops = [op for op in admin.ops if op.operation is Operation.DROP]
+    assert len(drop_ops) == 1
+    assert drop_ops[0].subject.name == "analysts"
+
+
 def test_trainer_filter_database_objects_excludes_grant():
     """filter_database_objects excludes GRANT ops whose object fails the filter."""
     excluded = DatabaseObject(name="secret_table", type=DatabaseObjectType.TABLE)
