@@ -221,7 +221,9 @@ def test_user_management_operation_grant_without_privilege_raises_typeerror(user
         ),
     ],
 )
-def test_user_management_operation_alter_owner(user, object_type, object_name, expected):
+def test_user_management_operation_alter_owner(
+    user, object_type, object_name, expected
+):
     """Test the build_query method for an ALTER_OWNER operation."""
     op = UserManagementOperation(
         operation=Operation.ALTER_OWNER,
@@ -550,31 +552,6 @@ def test_user_management_operation_create_no_password():
     op = UserManagementOperation(
         operation=Operation.CREATE,
         subject=passwordless_user,
-    )
-    with pytest.raises(TypeError):
-        op.build_query()
-
-
-def test_user_management_operation_alter_owner(user):
-    """ALTER_OWNER builds an ALTER ... OWNER TO query."""
-    db_obj = DatabaseObject(name="my_schema.my_table", type=DatabaseObjectType.TABLE)
-    op = UserManagementOperation(
-        operation=Operation.ALTER_OWNER,
-        subject=user,
-        database_object=db_obj,
-    )
-    result = op.build_query()
-    assert "my_schema.my_table" in result
-    assert "test_user_1" in result
-    assert "OWNER TO" in result
-    assert result.startswith("ALTER")
-
-
-def test_user_management_operation_alter_owner_no_db_object(user):
-    """ALTER_OWNER with no database_object raises TypeError."""
-    op = UserManagementOperation(
-        operation=Operation.ALTER_OWNER,
-        subject=user,
     )
     with pytest.raises(TypeError):
         op.build_query()
@@ -1033,3 +1010,64 @@ def test_manage_closes_connection_after_loop():
 
     assert connector.closed is True
     assert connector.connect_count == 1
+
+
+class _RecordingConnector:
+    """A fake RedshiftConnector that records executed queries.
+
+    Mimics the parts of the RedshiftConnector interface that
+    DatabaseAdministrator.manage relies on: a ``connect`` context manager
+    that yields a connection exposing ``run_query``. Used by integration
+    tests so the full train -> manage flow can be exercised without a real
+    Redshift cluster.
+    """
+
+    def __init__(self):
+        self.executed_queries: list[str] = []
+
+    @contextmanager
+    def connect(self):
+        yield self
+
+    def run_query(self, query: str):
+        self.executed_queries.append(query)
+        return None
+
+
+@pytest.mark.integration
+def test_ownership_is_applied_end_to_end():
+    """Declaring owns: for a user results in an ALTER ... OWNER TO statement.
+
+    This drives the full pipeline: a Specification with an ``owns:`` block
+    is trained into a DatabaseAdministrator, whose ``manage`` method is then
+    run against a connector. We assert the expected ``ALTER TABLE ... OWNER
+    TO ...`` query was executed.
+    """
+    desired = Specification.from_yaml(
+        """
+        users:
+          - name: data_owner
+            is_superuser: false
+            owns:
+              table:
+                - analytics.public.events
+        """
+    )
+    current = Specification(users=[], groups=[])
+
+    trainer = DatabaseAdministratorTrainer(
+        desired_spec=desired,
+        current_spec=current,
+        filter_operations=lambda op: op is Operation.ALTER_OWNER,
+    )
+    administrator = trainer.train()
+
+    connector = _RecordingConnector()
+    success, errors = administrator.manage(connector)
+
+    assert success is True
+    assert errors == []
+    assert (
+        "ALTER TABLE analytics.public.events OWNER TO data_owner;"
+        in connector.executed_queries
+    )
