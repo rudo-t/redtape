@@ -207,6 +207,57 @@ users:
                 usage:
                     - language_name
                     - ...
+
+        owns:
+            table:
+                - table_name
+                - ...
+            schema:
+                - schema_name
+                - ...
+            database:
+                - database_name
+                - ...
+```
+
+## Ownership
+
+A user may be declared as the owner of database objects via the `owns:` block.
+It is keyed by object type (`table`, `schema`, `database`, ...) and lists the
+objects that the user should own. For every declared object `redtape` will run
+an `ALTER ... OWNER TO ...` statement so the object's owner matches the spec.
+
+``` yaml
+users:
+    - name: analytics_owner
+      is_superuser: false
+      owns:
+          table:
+              - analytics.public.events
+              - analytics.public.sessions
+          schema:
+              - analytics.public
+          database:
+              - analytics
+```
+
+Given the spec above, `redtape run` will execute, among others:
+
+```
+ALTER TABLE analytics.public.events OWNER TO analytics_owner;
+ALTER TABLE analytics.public.sessions OWNER TO analytics_owner;
+ALTER SCHEMA analytics.public OWNER TO analytics_owner;
+ALTER DATABASE analytics OWNER TO analytics_owner;
+```
+
+### Requiring an owner for every object
+
+Pass `--require-owner` to `redtape validate` to fail validation unless every
+object referenced by a privilege has a declared owner (i.e. appears in some
+user's `owns:` block):
+
+``` shell
+redtape validate --require-owner spec.yml
 ```
 
 # To do
@@ -222,8 +273,7 @@ users:
 - [ ] Documentation.
 - [ ] Missing features:
   - [ ] Support for wildcard (`*`) in specification file.
-  - [ ] Support for ownership (`ALTER TABLE ... OWNER TO ...`).
-  - [ ] Support for ownership.
+  - [x] Support for ownership (`ALTER TABLE ... OWNER TO ...`).
   - [ ] Support for roles (`CREATE ROLE`, `GRANT ROLE`, `ASSUMEROLE`, etc...).
   - [ ] Support for role management (`ASSUMEROLE`, `CREATE ROLE`, `DROP ROLE`, etc...).
   - [ ] Support for permissions related to `EXTERNAL` objects.

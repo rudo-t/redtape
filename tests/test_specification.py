@@ -1179,3 +1179,97 @@ def test_user_validate_valid_password_with_no_privileges():
     success, failures = user.validate()
     assert success is True
     assert failures is None
+
+
+def test_validate_passes_without_require_owner_when_no_owners():
+    """By default an unowned object does not fail validation."""
+    user = User(
+        name="reader",
+        is_superuser=False,
+        privileges=Privileges(
+            [
+                Privilege(
+                    database_object=DatabaseObject(
+                        name="db.public.events", type=DatabaseObjectType.TABLE
+                    ),
+                    action=Action.SELECT,
+                )
+            ]
+        ),
+    )
+    spec = Specification(users=[user], groups=[])
+
+    success, failures = spec.validate()
+
+    assert success is True
+    assert failures is None
+
+
+def test_validate_require_owner_fails_for_unowned_object():
+    """require_owner fails validation when a privileged object has no owner."""
+    user = User(
+        name="reader",
+        is_superuser=False,
+        privileges=Privileges(
+            [
+                Privilege(
+                    database_object=DatabaseObject(
+                        name="db.public.events", type=DatabaseObjectType.TABLE
+                    ),
+                    action=Action.SELECT,
+                )
+            ]
+        ),
+    )
+    spec = Specification(users=[user], groups=[])
+
+    success, failures = spec.validate(require_owner=True)
+
+    assert success is False
+    assert failures is not None
+    assert any(
+        getattr(failure.subject, "name", None) == "db.public.events"
+        for failure in failures
+    )
+
+
+def test_validate_require_owner_passes_when_every_object_is_owned():
+    """require_owner succeeds when every privileged object is declared as owned."""
+    events = DatabaseObject(name="db.public.events", type=DatabaseObjectType.TABLE)
+    owner = User(
+        name="owner",
+        is_superuser=False,
+        owns=Ownerships([events]),
+    )
+    reader = User(
+        name="reader",
+        is_superuser=False,
+        privileges=Privileges(
+            [Privilege(database_object=events, action=Action.SELECT)]
+        ),
+    )
+    spec = Specification(users=[owner, reader], groups=[])
+
+    success, failures = spec.validate(require_owner=True)
+
+    assert success is True
+    assert failures is None
+
+
+def test_validate_require_owner_checks_group_privileges():
+    """require_owner also considers objects referenced by group privileges."""
+    sales = DatabaseObject(name="db.public.sales", type=DatabaseObjectType.TABLE)
+    group = Group(
+        name="analysts",
+        privileges=Privileges([Privilege(database_object=sales, action=Action.SELECT)]),
+    )
+    spec = Specification(users=[], groups=[group])
+
+    success, failures = spec.validate(require_owner=True)
+
+    assert success is False
+    assert failures is not None
+    assert any(
+        getattr(failure.subject, "name", None) == "db.public.sales"
+        for failure in failures
+    )

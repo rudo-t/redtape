@@ -243,7 +243,10 @@ class UserManagementOperation(ManagementOperation):
                 f"{type(self.database_object)} was provided."
             )
 
-        return f"ALTER {self.database_object._type} {self.database_object.name} OWNER TO {self.subject.name};"
+        return (
+            f"ALTER {self.database_object._type.name} {self.database_object.name} "
+            f"OWNER TO {self.subject.name};"
+        )
 
 
 class GroupManagementOperation(ManagementOperation):
