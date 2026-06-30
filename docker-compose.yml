@@ -1,6 +1,17 @@
 services:
+  # Local-only convenience DB. pgredshift is PostgreSQL with a partial
+  # Redshift-SQL compatibility layer; it does NOT implement Redshift system
+  # views/functions (svv_external_schemas, pg_get_all_external_schemas) or
+  # VARCHAR(MAX), so redtape's read/export path cannot run against it. Useful
+  # only for ad-hoc DDL/DCL experiments. The CI integration job and the full
+  # integration test suite require a real Redshift cluster (see AGENTS.md).
+  #
+  # The old heartsim/pgredshift Docker Hub image is deprecated; it now lives on
+  # GHCR. Pinned by digest (tag: latest, pushed 2026-01-23); amd64-only, so the
+  # platform is set for arm64 hosts.
   redshift-compat:
-    image: heartsim/pgredshift:latest
+    image: ghcr.io/hearthsim/docker-pgredshift@sha256:b633dcb85adee3b8f72a700caa3ae88a66610066518bf4e83254c9833ac85f7c
+    platform: linux/amd64
     ports:
       - "5439:5432"
     environment:

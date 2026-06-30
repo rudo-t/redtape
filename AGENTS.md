@@ -14,11 +14,27 @@ Run every dev tool through `uv` so it resolves against the locked environment �
 # Tests
 uv run --with pytest pytest tests/ -q                              # unit tests
 uv run --with pytest pytest tests/ --cov=redtape --cov-report=term-missing
-uv run --with pytest pytest tests/integration/ -m integration -v   # needs `docker compose up -d`
+# Integration tests need a real Redshift cluster (see below):
+REDTAPE_INTEGRATION_DSN='host=… port=5439 dbname=… user=… password=…' \
+  uv run --with pytest pytest tests/integration/ -m integration -v
 ```
 
-> The 5 integration tests under `tests/integration/` error without a live Redshift cluster
-> (`RedshiftConnector.from_dsn`) — see issue #38. The unit suite must stay green.
+### Integration tests (issue #38)
+
+The `tests/integration/` suite exercises redtape's real Redshift SQL — the
+read/export path uses Redshift-only system views (`svv_external_schemas`,
+`pg_get_all_external_schemas()`) and `VARCHAR(MAX)`, which **no Postgres-based
+emulator (including pgredshift) implements**. So these tests require a real
+test/dev Redshift cluster, pointed at via the **`REDTAPE_INTEGRATION_DSN`**
+libpq DSN. If it is unset or the cluster is unreachable, the suite **skips**
+(it never errors).
+
+CI runs them in a dedicated **non-blocking** job (`integration` in
+`test.yml`, `continue-on-error: true`, not a required status check) using a
+`REDTAPE_INTEGRATION_DSN` repository secret — it surfaces real-cluster signal
+without gating merges. The unit suite (the required `test` job) stays fast and
+must remain green. `docker-compose.yml` provides a local pgredshift container
+for ad-hoc DDL only; the export tests will not pass against it.
 
 ## Code quality
 
