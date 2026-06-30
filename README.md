@@ -63,22 +63,45 @@ Options:
 
 ## Development
 
-Install dev dependencies once with `uv sync --group dev`, then run tools through `uv` so they resolve against the locked environment (don't call bare `pytest`/`ruff`/`mypy`):
+Install dev dependencies once with `uv sync --group dev`, then run tools through `uv` so they resolve against the locked environment (don't call bare `pytest`/`ruff`/`mypy`).
+
+### Testing strategy
+
+Tests come in two tiers with different cost and different guarantees:
+
+| Tier | Needs | Speed | CI | What it proves |
+|------|-------|-------|----|----------------|
+| **Unit** (`tests/`) | nothing — fake connectors | milliseconds | **required**, runs on every PR | The plan and the SQL redtape generates are correct, in isolation. |
+| **Integration** (`tests/integration/`) | a real Redshift cluster | seconds + network | **non-blocking**, opt-in | The generated SQL actually applies, and an export round-trips, against Redshift. |
+
+**Unit tests are the gate.** They use fake connectors to assert the operations and SQL produced for a given spec, so they need no database and stay fast. Keep them green; they run on every PR and block merges.
 
 ```sh
-# Tests
-uv run --with pytest pytest tests/ -q                              # unit tests
+uv run --with pytest pytest tests/ -q                                # unit tests
 uv run --with pytest pytest tests/ --cov=redtape --cov-report=term-missing
-uv run --with pytest pytest tests/integration/ -m integration -v   # needs a live cluster (docker compose up -d)
+```
 
-# Quality (must be clean before opening a PR)
+**Integration tests need a real Redshift cluster.** redtape's read/export path relies on Redshift-only SQL — `svv_external_schemas`, `pg_get_all_external_schemas()`, `VARCHAR(MAX)` — that Postgres and Postgres-based emulators (including pgredshift) do not implement, so they cannot stand in. Point the suite at a test/dev cluster with a libpq DSN; if it is unset or unreachable the suite **skips** (it never errors):
+
+```sh
+REDTAPE_INTEGRATION_DSN='host=… port=5439 dbname=… user=… password=…' \
+  uv run --with pytest pytest tests/integration/ -m integration -v
+```
+
+In CI these run in a dedicated **non-blocking** job (`continue-on-error`, not a required check) using a `REDTAPE_INTEGRATION_DSN` repository secret. The rationale: a cluster can be slow, flaky, or unavailable on forked PRs, and real-cluster coverage shouldn't gate everyday merges — it informs, the unit suite gates. (`docker-compose.yml` provides a local pgredshift container for ad-hoc DDL experiments only; the export tests will not pass against it.)
+
+### Quality gates
+
+These must be clean before opening a PR; CI runs the same checks:
+
+```sh
 uv run --with ruff ruff check .          # lint + import sort + format checks
 uv run --with ruff ruff format .         # apply formatting
 uv run --with mypy mypy redtape/         # strict type check
 uv run --with vulture vulture redtape/ whitelist.py --min-confidence 80
 ```
 
-The integration tests require a running Redshift-compatible database and are skipped by the unit run. See `AGENTS.md` for the full tooling conventions and `docs/adr/0002-code-quality-toolchain.md` for the rationale.
+See `AGENTS.md` for the full tooling conventions and `docs/adr/0002-code-quality-toolchain.md` for the rationale.
 
 ## Specification file
 
@@ -265,7 +288,7 @@ redtape validate --require-owner spec.yml
 `redtape` should be considered in Alpha status: things may break, and test coverage is low. The following tasks are planned for a 1.0.0 release:
 
 - [ ] Meaningfully increase test coverage:
-  - [ ] Integration tests against PostgreSQL 8.1 (should closely mimic Redshift).
+  - [x] Integration tests wired into CI against a real Redshift cluster (non-blocking). A Postgres emulator can't substitute — see [Testing strategy](#testing-strategy).
   - [ ] Unit testing of queries generated.
 - [ ] CI/CD:
   - [ ] Get auto-deployment working again.
