@@ -1,6 +1,12 @@
 # redtape
 
-A CLI tool for declarative privilege management on Redshift and Postgres. Reads a spec describing the desired state of grantees and their privileges; diffs against the actual state in the live database; and emits SQL to close the gap.
+A CLI tool for declarative privilege management on Amazon Redshift. Reads a spec describing the desired state of grantees and their privileges; diffs against the actual state in the live database; and emits SQL to close the gap. (Postgres support is planned — see issue #27 — but only Redshift is implemented today.)
+
+## Scope (MVP)
+
+MVP manages **users, groups, and privileges**, and includes applying changes to a live cluster (a real `run`, not only `--dry`). Explicitly **post-MVP**: RBAC **roles** (#32 epic) and **Postgres** support (#27).
+
+MVP issues: #9, #15, #17 done; #26 (PR #65) and #38 (PR #68) in review. #18 (atomic rollback) was reclassified post-MVP — it is hardening, not viability: since #9 the whole plan already applies over one connection that rolls back on error, so `--atomic` (PR #64) only adds a clean abort-on-first-error.
 
 ## Language
 
@@ -44,6 +50,10 @@ _Avoid_: statement, step, command, action
 The classifier of an operation: GRANT, REVOKE, CREATE, DROP, ADD_TO_GROUP, DROP_FROM_GROUP, ALTER_OWNER.
 _Avoid_: operation kind, operation mode, verb
 
+**Transaction**:
+The unit of atomicity for a run. Since #9 the whole plan runs over a single connection that commits on success and rolls back if an operation raises. The `--atomic` flag (`OnError.ABORT`, PR #64) makes a run stop at the first failing operation and roll back the whole plan; the default (`OnError.CONTINUE`) reports the error and carries on. Note that on Redshift a failed statement aborts the session transaction, so a continued run's later statements also fail until the transaction ends.
+_Avoid_: batch, unit of work
+
 ### Privileges
 
 **Privilege**:
@@ -71,3 +81,10 @@ _Avoid_: role (for this concept)
 **Role**:
 A Redshift RBAC role, created with `CREATE ROLE` (available since 2022). Supports role-to-role inheritance via `member_of`. Distinct from a group.
 _Avoid_: group (for this concept)
+
+## Glossary vs. code
+
+The code has not yet caught up to this glossary in two places — expect the drift when navigating:
+
+- **Actual spec** is called `current` in code (`current_spec`, `self.current`, `current_users`, …). Rename to `actual` tracked by issue #23.
+- **Grantee** is called `subject` in code (`UserManagementOperation.subject`, the `prepare_subjects` methods). No rename issue filed yet.

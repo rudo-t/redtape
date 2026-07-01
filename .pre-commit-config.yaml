@@ -1,22 +1,45 @@
+# Hooks mirror the CI quality gates (see .github/workflows/test.yml and
+# AGENTS.md). The linters run through `uv` so they resolve against the locked
+# environment — the same way every other dev tool is invoked in this repo —
+# which is why they are `local`/`system` hooks rather than pinned mirror repos
+# that would drift from pyproject.
+#
+# Install once with: uv run --with pre-commit pre-commit install
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.0.1
+    rev: v5.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
 
-  - repo: https://github.com/psf/black
-    rev: 21.12b0
+  - repo: local
     hooks:
-      - id: black
-
-  - repo: https://github.com/pycqa/isort
-    rev: 5.10.1
-    hooks:
-      - id: isort
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --with ruff ruff check --fix
+        language: system
         types: [python]
+        require_serial: true
 
-  - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.1.0
-    hooks:
-      - id: detect-secrets
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --with ruff ruff format
+        language: system
+        types: [python]
+        require_serial: true
+
+      - id: mypy
+        name: mypy (strict)
+        entry: uv run --with mypy mypy redtape/
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: vulture
+        name: vulture (dead code)
+        entry: uv run --with vulture vulture redtape/ whitelist.py --min-confidence 80
+        language: system
+        types: [python]
+        pass_filenames: false

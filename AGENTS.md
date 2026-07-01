@@ -37,7 +37,7 @@ Conventions:
 - **mypy** runs with `strict = true`. attrs support is built into mypy's default plugin (do **not** add `plugins = ["mypy.plugins.attrs"]` — that entry point is invalid). A documented `disable_error_code` list in `[tool.mypy]` defers known legacy debt so strict stays on for new code; clear deferred codes as you touch the relevant modules rather than adding new ignores.
 - **vulture** runs at `--min-confidence 80`. Dynamic-dispatch callbacks (`@build_query.register` handlers reached via `OperationDispatch`) are recorded in `whitelist.py`; add genuine false positives there rather than lowering the threshold.
 
-> `.pre-commit-config.yaml` still references the old hooks — wiring these tools into pre-commit is tracked by issue #45.
+> `.pre-commit-config.yaml` runs these same gates as `local` hooks through `uv` (install with `uv run --with pre-commit pre-commit install`); it does not pin external mirror repos that would drift from `pyproject.toml` (closes #45).
 
 ## Agent skills
 
