@@ -292,13 +292,12 @@ redtape validate --require-owner spec.yml
   - [ ] Unit testing of queries generated.
 - [ ] CI/CD:
   - [ ] Get auto-deployment working again.
-  - [ ] Remove codecov.
+  - [x] Remove codecov.
 - [ ] Documentation.
 - [ ] Missing features:
   - [ ] Support for wildcard (`*`) in specification file.
   - [x] Support for ownership (`ALTER TABLE ... OWNER TO ...`).
-  - [ ] Support for roles (`CREATE ROLE`, `GRANT ROLE`, `ASSUMEROLE`, etc...).
-  - [ ] Support for role management (`ASSUMEROLE`, `CREATE ROLE`, `DROP ROLE`, etc...).
+  - [ ] Support for roles (`CREATE ROLE`, `GRANT ROLE`, `ASSUMEROLE`, etc.).
   - [ ] Support for permissions related to `EXTERNAL` objects.
 - [ ] Complete support for `mypy` static type-checking.
 
