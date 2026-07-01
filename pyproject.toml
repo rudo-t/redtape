@@ -19,9 +19,9 @@ dependencies = [
 [project.scripts]
 redtape = "redtape.cli:main"
 
-# Exposed as a pip "extra" so `pip install -e ".[dev]"` works (used by ralph
-# inside Docker). Mirrored by the [dependency-groups] table below, which is
-# what `uv sync --group dev` reads.
+# Exposed as a pip "extra" so `pip install -e ".[dev]"` works without uv.
+# Mirrored by the [dependency-groups] table below, which is what
+# `uv sync --group dev` reads.
 [project.optional-dependencies]
 dev = [
     "pytest>=8.1",
