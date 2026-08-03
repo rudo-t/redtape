@@ -1,6 +1,6 @@
 # 5 separate connection round-trips to load the current spec
 
-Status: needs-triage
+Status: done
 Priority: low
 
 `fetch_users_and_groups` opens two connections; `itertools.chain` over the three `iter_*` generators opens three more. Loading the current spec costs 5 Redshift TCP handshakes.
@@ -9,3 +9,7 @@ Priority: low
 
 - [ ] Consolidate into a single connection with multiple queries (or use a single cursor in sequence)
 - [ ] Add a test that asserts `connector.connect()` is called at most once during `Specification.from_redshift_connector()`
+
+## Resolution
+
+Closed via GitHub issue #19, merged in PR #56.

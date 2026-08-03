@@ -6,7 +6,7 @@ A CLI tool for declarative privilege management on Amazon Redshift. Reads a spec
 
 MVP manages **users, groups, and privileges**, and includes applying changes to a live cluster (a real `run`, not only `--dry`). Explicitly **post-MVP**: RBAC **roles** (#32 epic) and **Postgres** support (#27).
 
-MVP issues: #9, #15, #17 done; #26 (PR #65) and #38 (PR #68) in review. #18 (atomic rollback) was reclassified post-MVP — it is hardening, not viability: since #9 the whole plan already applies over one connection that rolls back on error, so `--atomic` (PR #64) only adds a clean abort-on-first-error.
+MVP issues: #9, #15, #17, #26, #38 done. #18 (atomic rollback) was reclassified post-MVP — it is hardening, not viability: since #9 the whole plan already applies over one connection that rolls back on error, so `--atomic` (PR #64) only adds a clean abort-on-first-error.
 
 ## Language
 

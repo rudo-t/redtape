@@ -103,6 +103,10 @@ uv run --with vulture vulture redtape/ whitelist.py --min-confidence 80
 
 See `AGENTS.md` for the full tooling conventions and `docs/adr/0002-code-quality-toolchain.md` for the rationale.
 
+## Security
+
+See [`docs/security/THREAT_MODEL.md`](docs/security/THREAT_MODEL.md) for redtape's assets, trust boundaries, and known gaps (e.g. spec-supplied identifiers reaching SQL unparameterized, plaintext passwords in run output).
+
 ## Specification file
 
 A YAML specification file is used to define groups, users, and their corresponding privileges.

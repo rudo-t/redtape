@@ -1,6 +1,6 @@
 # GroupManagementOperation.__repr__ crashes with AttributeError
 
-Status: ready-for-agent
+Status: done
 Priority: high
 File: `admin.py:254`
 
@@ -10,3 +10,7 @@ File: `admin.py:254`
 
 - [ ] Fix `__repr__` to reference the correct attribute
 - [ ] Add a test (currently marked `xfail`) that calls `repr(GroupManagementOperation(...))` without crashing
+
+## Resolution
+
+Closed via GitHub issue #14, merged in PR #57.

@@ -1,6 +1,6 @@
 # Ownership enforcement — test, document, and harden
 
-Status: needs-triage
+Status: done
 
 The spec supports `owns:` and `ALTER_OWNER` is implemented in SQL generation, but there are no integration tests and it is not documented in the README.
 
@@ -14,3 +14,7 @@ The spec supports `owns:` and `ALTER_OWNER` is implemented in SQL generation, bu
 ## Notes
 
 `ALTER_OWNER` is on the `feat/schema-wildcard` branch. Check that it survived the rebase onto `fix/revoke-arg-order` cleanly before writing tests.
+
+## Resolution
+
+Closed via GitHub issue #26, merged in PR #69.

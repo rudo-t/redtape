@@ -1,6 +1,6 @@
 # CREATE vs DROP use inconsistent sides of the group/user filter
 
-Status: needs-triage
+Status: done
 Priority: low
 Files: `admin.py:436–444`
 
@@ -10,3 +10,7 @@ Files: `admin.py:436–444`
 
 - [ ] Audit both methods and apply the filter consistently on the same side
 - [ ] Add tests that verify filter behaviour is symmetric for CREATE and DROP
+
+## Resolution
+
+Closed via GitHub issue #17, merged in PR #69.

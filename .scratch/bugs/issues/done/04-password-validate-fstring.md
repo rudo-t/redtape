@@ -1,6 +1,6 @@
 # Password.validate() error message never interpolates
 
-Status: ready-for-agent
+Status: done
 Priority: critical
 File: `models.py:282`
 
@@ -10,3 +10,7 @@ File: `models.py:282`
 
 - [ ] Add `f` prefix to the string literal at `models.py:282`
 - [ ] Add a test that asserts the error message contains the actual integer length
+
+## Resolution
+
+Closed via GitHub issue #11, merged in PR #48.
