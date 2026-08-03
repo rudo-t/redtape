@@ -175,15 +175,12 @@ class UserManagementOperation(ManagementOperation):
 
     @build_query.register(Operation.CREATE)
     def build_create_query(self) -> str:
-        if self.subject.password is None:
-            raise TypeError(
-                f"Creating a user in Redshift requires a password not {type(self.subject.password)}."
-            )
-
-        return "CREATE USER {name}{password}{is_superuser};".format(
+        # redtape does not manage user passwords (#71): password-based login
+        # is disabled outright, and provisioning credentials (e.g. IAM auth)
+        # is a separate out-of-band concern (#7).
+        return "CREATE USER {name} PASSWORD DISABLE{is_superuser};".format(
             name=self.subject.name,
             is_superuser=" CREATEUSER" if self.subject.is_superuser is True else "",
-            password=f" PASSWORD '{self.subject.password}'",
         )
 
     @build_query.register(Operation.DROP)

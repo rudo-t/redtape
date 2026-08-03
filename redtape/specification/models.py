@@ -230,88 +230,8 @@ class Operation(Enum):
 
 @attrs.frozen(hash=True)
 class ValidationFailure:
-    subject: DatabaseObject | User | Group | Password
+    subject: DatabaseObject | User | Group
     message: str
-
-
-class PasswordType(Enum):
-    """All supported Password types."""
-
-    PLAIN = "plain"
-    SHA256 = "sha256"
-    MD5 = "md5"
-    DISABLED = "DISABLED"
-
-
-@attrs.define(slots=True)
-class Password:
-    _type: PasswordType
-    value: str | None = None
-    salt: str | None = None
-
-    @property
-    def name(self):
-        return "Password"
-
-    def __str__(self):
-        if self._type is PasswordType.PLAIN:
-            return self.value
-        elif self._type is PasswordType.SHA256:
-            return "sha256|{digest}{salt}".format(
-                digest=self.value,
-                salt=f"|{self.salt}" if self.salt is not None else "",
-            )
-        elif self._type is PasswordType.MD5:
-            return f"md5{self.value}"
-        elif self._type is PasswordType.DISABLED:
-            return "DISABLED"
-        else:
-            raise TypeError("Password type: {self._type} is not supported.")
-
-    def validate(self) -> tuple[bool, list[ValidationFailure] | None]:
-        failures = []
-        success = True
-
-        if self.value is not None and self._type is PasswordType.PLAIN:
-            if len(self.value) < 8 or len(self.value) > 64:
-                failures.append(
-                    ValidationFailure(
-                        subject=self,
-                        message=f"Password must be between 8 and 64 characters, not {len(self.value)}",
-                    )
-                )
-                success = False
-
-            if any(map(str.isupper, self.value)) is False:
-                failures.append(
-                    ValidationFailure(
-                        subject=self,
-                        message="Password must contain at least one uppercase character.",
-                    )
-                )
-                success = False
-
-            if any(map(str.islower, self.value)) is False:
-                failures.append(
-                    ValidationFailure(
-                        subject=self,
-                        message="Password must contain at least one lowercase character.",
-                    )
-                )
-                success = False
-
-            if any(map(str.isdigit, self.value)) is False:
-                failures.append(
-                    ValidationFailure(
-                        subject=self,
-                        message="Password must contain at least one digit.",
-                    )
-                )
-                success = False
-
-        if success is True:
-            return success, None
-        return success, failures
 
 
 class Privileges(set):
@@ -377,14 +297,12 @@ class User:
         name (str): The user name.
         is_superuser (bool): Whether the user is a superuser or not.
         member_of (list[str]): A list of group names the user is a member of.
-        password (Password): A Password associated with the user.
         privileges (Privileges): A set of Privileges associated with this user.
     """
 
     name: str
     is_superuser: bool
     member_of: set[str] | None = None
-    password: Password | None = None
     privileges: Privileges | None = None
     owns: Ownerships | None = None
 
@@ -397,13 +315,11 @@ class User:
                 self.privileges,
                 self.is_superuser,
                 self.member_of,
-                self.password,
             ) == (
                 other.name,
                 other.privileges,
                 other.is_superuser,
                 other.member_of,
-                other.password,
             )
         else:
             return NotImplemented
@@ -434,13 +350,6 @@ class User:
                 if failures is not None:
                     validation_failures.extend(failures)
                     success = False
-
-        if self.password is not None:
-            _, failures = self.password.validate()
-
-            if failures is not None:
-                validation_failures.extend(failures)
-                success = False
 
         if success is True:
             return success, None

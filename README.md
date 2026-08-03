@@ -150,9 +150,6 @@ users:
         member_of:
             - group_name
             - ...
-        password:
-            type: str
-            value: str
         privileges:
             table:
                 select:
@@ -219,6 +216,16 @@ users:
                 - database_name
                 - ...
 ```
+
+### Passwords are out of scope
+
+`redtape` does not set or store user passwords. Users are created with
+`CREATE USER name PASSWORD DISABLE`, which disables password-based login
+entirely — the password is never persisted, so it can never leak through a
+spec file committed to version control (a spec is normally committed for a
+declarative, CI-driven workflow like this one). Provisioning login
+credentials for a user (e.g. via IAM/temporary-credential authentication) is
+a separate, out-of-band concern; see issue #7.
 
 ## Ownership
 
