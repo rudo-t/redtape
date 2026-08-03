@@ -11,12 +11,38 @@ from __future__ import annotations
 import contextlib
 import itertools
 import operator
+import re
 from collections.abc import Iterator
 from enum import Enum
 
 import attrs
 
 from redtape.connectors import Database, RedshiftConnector, Schema, Table
+
+# A conservative pattern for a single, unqualified Redshift/Postgres
+# identifier: must start with a letter or underscore, followed by letters,
+# digits, or underscores. This is deliberately stricter than what Redshift
+# actually allows (quoted identifiers can contain almost anything) -- it's
+# meant as defense in depth against spec-supplied names carrying characters
+# with special meaning in SQL (quotes, semicolons, comment markers, etc.),
+# on top of the identifier-quoting done when building queries (see
+# redtape/admin.py, issue #70).
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def is_valid_identifier_name(name: str) -> bool:
+    """Return True if name is safe to use as a single SQL identifier."""
+    return bool(_IDENTIFIER_RE.match(name))
+
+
+def is_valid_database_object_name(name: str) -> bool:
+    """Return True if name is safe as a (possibly dot-qualified, possibly
+    wildcarded) database object identifier, e.g. ``db.schema.table`` or
+    ``db.schema.*``."""
+    parts = name.split(".")
+    return len(parts) > 0 and all(
+        part == "*" or is_valid_identifier_name(part) for part in parts
+    )
 
 
 class Action(Enum):
@@ -192,19 +218,32 @@ class Privilege:
     action: Action | None = None
 
     def validate(self) -> tuple[bool, list[ValidationFailure] | None]:
-        if self.action is None:
-            return True, None
+        failures: list[ValidationFailure] = []
 
-        success = self.database_object.is_action_supported(self.action)
-        if success is True:
-            return success, None
-
-        return False, [
-            ValidationFailure(
-                subject=self.database_object,
-                message=f"{self.action} cannot be granted to {self.database_object}",
+        if not is_valid_database_object_name(self.database_object.name):
+            failures.append(
+                ValidationFailure(
+                    subject=self.database_object,
+                    message=(
+                        f"{self.database_object.name!r} is not a valid Redshift "
+                        "identifier."
+                    ),
+                )
             )
-        ]
+
+        if self.action is not None and not self.database_object.is_action_supported(
+            self.action
+        ):
+            failures.append(
+                ValidationFailure(
+                    subject=self.database_object,
+                    message=f"{self.action} cannot be granted to {self.database_object}",
+                )
+            )
+
+        if len(failures) == 0:
+            return True, None
+        return False, failures
 
 
 class Operation(Enum):
@@ -351,18 +390,25 @@ class Group:
             self.privileges = Privileges((privilege,))
 
     def validate(self) -> tuple[bool, list[ValidationFailure] | None]:
-        if self.privileges is None:
-            return True, None
-
         validation_failures: list[ValidationFailure] = []
         success = True
 
-        for privilege in self.privileges:
-            _, failures = privilege.validate()
+        if not is_valid_identifier_name(self.name):
+            validation_failures.append(
+                ValidationFailure(
+                    subject=self,
+                    message=f"{self.name!r} is not a valid Redshift identifier.",
+                )
+            )
+            success = False
 
-            if failures is not None:
-                validation_failures.extend(failures)
-                success = False
+        if self.privileges is not None:
+            for privilege in self.privileges:
+                _, failures = privilege.validate()
+
+                if failures is not None:
+                    validation_failures.extend(failures)
+                    success = False
 
         if success is True:
             return success, None
@@ -427,12 +473,34 @@ class User:
         validation_failures: list[ValidationFailure] = []
         success = True
 
+        if not is_valid_identifier_name(self.name):
+            validation_failures.append(
+                ValidationFailure(
+                    subject=self,
+                    message=f"{self.name!r} is not a valid Redshift identifier.",
+                )
+            )
+            success = False
+
         if self.privileges is not None:
             for privilege in self.privileges:
                 _, failures = privilege.validate()
 
                 if failures is not None:
                     validation_failures.extend(failures)
+                    success = False
+
+        if self.owns is not None:
+            for db_obj in self.owns:
+                if not is_valid_database_object_name(db_obj.name):
+                    validation_failures.append(
+                        ValidationFailure(
+                            subject=db_obj,
+                            message=(
+                                f"{db_obj.name!r} is not a valid Redshift identifier."
+                            ),
+                        )
+                    )
                     success = False
 
         if self.password is not None:

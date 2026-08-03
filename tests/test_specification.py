@@ -799,6 +799,79 @@ def test_privilege_validate_unsupported_action():
     assert failures is not None and len(failures) == 1
 
 
+@pytest.mark.parametrize(
+    "malicious_name",
+    [
+        "innocent'; DROP TABLE users; --",
+        'innocent"; DROP TABLE users; --',
+        "innocent-- comment",
+    ],
+    ids=["single-quote", "double-quote", "sql-comment"],
+)
+def test_privilege_validate_rejects_malicious_database_object_name(malicious_name):
+    """A database object name with SQL metacharacters must fail validation (#70)."""
+    priv = Privilege(
+        database_object=DatabaseObject(
+            name=malicious_name, type=DatabaseObjectType.TABLE
+        ),
+        action=Action.SELECT,
+    )
+    success, failures = priv.validate()
+    assert success is False
+    assert failures is not None and len(failures) == 1
+    assert "not a valid Redshift identifier" in failures[0].message
+
+
+@pytest.mark.parametrize(
+    "malicious_name",
+    [
+        "innocent'; DROP TABLE users; --",
+        'innocent"; DROP TABLE users; --',
+        "innocent-- comment",
+    ],
+    ids=["single-quote", "double-quote", "sql-comment"],
+)
+def test_user_validate_rejects_malicious_name(malicious_name):
+    """A user name with SQL metacharacters must fail validation (#70)."""
+    user = User(name=malicious_name, is_superuser=False)
+    success, failures = user.validate()
+    assert success is False
+    assert failures is not None
+    assert any("not a valid Redshift identifier" in f.message for f in failures)
+
+
+@pytest.mark.parametrize(
+    "malicious_name",
+    [
+        "innocent'; DROP TABLE users; --",
+        'innocent"; DROP TABLE users; --',
+        "innocent-- comment",
+    ],
+    ids=["single-quote", "double-quote", "sql-comment"],
+)
+def test_group_validate_rejects_malicious_name(malicious_name):
+    """A group name with SQL metacharacters must fail validation (#70)."""
+    group = Group(name=malicious_name)
+    success, failures = group.validate()
+    assert success is False
+    assert failures is not None
+    assert any("not a valid Redshift identifier" in f.message for f in failures)
+
+
+def test_user_validate_rejects_malicious_owned_database_object_name():
+    """A malicious name on an owned DatabaseObject must fail validation (#70)."""
+    user = User(name="valid_user", is_superuser=False)
+    user.add_owned_db_object(
+        DatabaseObject(
+            name="evil'; DROP TABLE users; --", type=DatabaseObjectType.TABLE
+        )
+    )
+    success, failures = user.validate()
+    assert success is False
+    assert failures is not None
+    assert any("not a valid Redshift identifier" in f.message for f in failures)
+
+
 def test_password_str_plain():
     pw = Password(type=PasswordType.PLAIN, value="MySecret1", salt=None)
     assert str(pw) == "MySecret1"

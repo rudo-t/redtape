@@ -85,9 +85,7 @@ def test_user_management_operation_create_user(user):
     )
 
     result = op.build_query()
-    expected = (
-        "CREATE USER test_user_1 PASSWORD 'aplainpassword';"  # pragma: allowlist secret
-    )
+    expected = "CREATE USER \"test_user_1\" PASSWORD 'aplainpassword';"  # pragma: allowlist secret
 
     assert result == expected
 
@@ -101,7 +99,7 @@ def test_user_management_operation_drop(user):
     )
 
     result = op.build_query()
-    expected = "DROP USER test_user_1;"
+    expected = 'DROP USER "test_user_1";'
 
     assert result == expected
 
@@ -116,7 +114,7 @@ def test_user_management_operation_add_to_group(user, group):
     )
 
     result = op.build_query()
-    expected = "ALTER GROUP a_user_group_1 ADD USER test_user_1;"
+    expected = 'ALTER GROUP "a_user_group_1" ADD USER "test_user_1";'
 
     assert result == expected
 
@@ -140,7 +138,7 @@ def test_user_management_operation_drop_from_group(user, group):
     )
 
     result = op.build_query()
-    expected = "ALTER GROUP a_user_group_1 DROP USER test_user_1;"
+    expected = 'ALTER GROUP "a_user_group_1" DROP USER "test_user_1";'
 
     assert result == expected
 
@@ -163,7 +161,7 @@ def test_user_management_operation_grant(user, select_privilege, create_privileg
     )
 
     result = op.build_query()
-    expected = "GRANT SELECT ON TABLE one_table TO test_user_1;"
+    expected = 'GRANT SELECT ON TABLE "one_table" TO "test_user_1";'
 
     assert result == expected
 
@@ -184,7 +182,9 @@ def test_user_management_operation_grant_with_wildcard(user):
     )
 
     result = op.build_query()
-    expected = "GRANT SELECT ON ALL TABLES IN SCHEMA my_db.my_schema TO test_user_1;"
+    expected = (
+        'GRANT SELECT ON ALL TABLES IN SCHEMA "my_db"."my_schema" TO "test_user_1";'
+    )
 
     assert result == expected
 
@@ -207,17 +207,17 @@ def test_user_management_operation_grant_without_privilege_raises_typeerror(user
         (
             DatabaseObjectType.TABLE,
             "my_db.my_schema.my_table",
-            "ALTER TABLE my_db.my_schema.my_table OWNER TO test_user_1;",
+            'ALTER TABLE "my_db"."my_schema"."my_table" OWNER TO "test_user_1";',
         ),
         (
             DatabaseObjectType.SCHEMA,
             "my_db.my_schema",
-            "ALTER SCHEMA my_db.my_schema OWNER TO test_user_1;",
+            'ALTER SCHEMA "my_db"."my_schema" OWNER TO "test_user_1";',
         ),
         (
             DatabaseObjectType.DATABASE,
             "my_db",
-            "ALTER DATABASE my_db OWNER TO test_user_1;",
+            'ALTER DATABASE "my_db" OWNER TO "test_user_1";',
         ),
     ],
 )
@@ -247,6 +247,86 @@ def test_user_management_operation_alter_owner_requires_database_object(user):
         op.build_query()
 
 
+@pytest.mark.parametrize(
+    "malicious_name",
+    [
+        "innocent'; DROP TABLE users; --",
+        'innocent"; DROP TABLE users; --',
+        "innocent-- comment",
+    ],
+    ids=["single-quote", "double-quote", "sql-comment"],
+)
+def test_user_management_operation_drop_quotes_malicious_name(malicious_name):
+    """A malicious subject name must be safely quoted, never break out (#70)."""
+    subject = User(name=malicious_name, is_superuser=False)
+    op = UserManagementOperation(operation=Operation.DROP, subject=subject)
+
+    result = op.build_query()
+
+    # The whole name, special characters and all, must live inside a single
+    # pair of double quotes with any embedded double quote doubled -- it must
+    # never terminate the identifier or introduce a second SQL statement.
+    expected_identifier = '"' + malicious_name.replace('"', '""') + '"'
+    assert result == f"DROP USER {expected_identifier};"
+
+
+@pytest.mark.parametrize(
+    "malicious_name",
+    [
+        "innocent'; DROP TABLE users; --",
+        'innocent"; DROP TABLE users; --',
+        "innocent-- comment",
+    ],
+    ids=["single-quote", "double-quote", "sql-comment"],
+)
+def test_group_management_operation_create_quotes_malicious_name(malicious_name):
+    """A malicious group name must be safely quoted, never break out (#70)."""
+    subject = Group(name=malicious_name)
+    op = GroupManagementOperation(operation=Operation.CREATE, subject=subject)
+
+    result = op.build_query()
+
+    expected_identifier = '"' + malicious_name.replace('"', '""') + '"'
+    assert result == f"CREATE GROUP {expected_identifier};"
+
+
+def test_user_management_operation_grant_quotes_malicious_names():
+    """Malicious subject and database object names must both be quoted (#70)."""
+    malicious_user = "evil'); DROP TABLE users; --"
+    malicious_table = 'evil"table'
+
+    subject = User(name=malicious_user, is_superuser=False)
+    priv = Privilege(
+        database_object=DatabaseObject(
+            name=malicious_table, type=DatabaseObjectType.TABLE
+        ),
+        action=Action.SELECT,
+    )
+    op = UserManagementOperation(
+        operation=Operation.GRANT, subject=subject, privilege=priv
+    )
+
+    result = op.build_query()
+
+    expected_user = '"' + malicious_user.replace('"', '""') + '"'
+    expected_table = '"' + malicious_table.replace('"', '""') + '"'
+    assert result == f"GRANT SELECT ON TABLE {expected_table} TO {expected_user};"
+
+
+def test_user_management_operation_create_quotes_malicious_password():
+    """A malicious password value must not break out of its string literal (#70)."""
+    subject = User(
+        name="test_user_1",
+        is_superuser=False,
+        password=Password(type=PasswordType.PLAIN, value="a' OR '1'='1", salt=None),
+    )
+    op = UserManagementOperation(operation=Operation.CREATE, subject=subject)
+
+    result = op.build_query()
+
+    assert result == "CREATE USER \"test_user_1\" PASSWORD 'a'' OR ''1''=''1';"
+
+
 def test_group_management_operation_create(group):
     """Test the build_query method for a CREATE operation."""
     op = GroupManagementOperation(
@@ -256,7 +336,7 @@ def test_group_management_operation_create(group):
     )
 
     result = op.build_query()
-    expected = "CREATE GROUP a_user_group_1;"
+    expected = 'CREATE GROUP "a_user_group_1";'
 
     assert result == expected
 
@@ -270,7 +350,7 @@ def test_group_management_operation_drop(group):
     )
 
     result = op.build_query()
-    expected = "DROP GROUP a_user_group_1;"
+    expected = 'DROP GROUP "a_user_group_1";'
 
     assert result == expected
 
@@ -284,7 +364,7 @@ def test_group_management_operation_grant(group, select_privilege, create_privil
     )
 
     result = op.build_query()
-    expected = "GRANT SELECT ON TABLE one_table TO a_user_group_1;"
+    expected = 'GRANT SELECT ON TABLE "one_table" TO "a_user_group_1";'
 
     assert result == expected
 
@@ -305,7 +385,9 @@ def test_group_management_operation_grant_with_wildcard(group):
     )
 
     result = op.build_query()
-    expected = "GRANT SELECT ON ALL TABLES IN SCHEMA my_db.my_schema TO a_user_group_1;"
+    expected = (
+        'GRANT SELECT ON ALL TABLES IN SCHEMA "my_db"."my_schema" TO "a_user_group_1";'
+    )
 
     assert result == expected
 
@@ -1068,6 +1150,6 @@ def test_ownership_is_applied_end_to_end():
     assert success is True
     assert errors == []
     assert (
-        "ALTER TABLE analytics.public.events OWNER TO data_owner;"
+        'ALTER TABLE "analytics"."public"."events" OWNER TO "data_owner";'
         in connector.executed_queries
     )

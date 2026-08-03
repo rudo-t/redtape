@@ -26,6 +26,38 @@ from redtape.specification import (
 )
 
 
+def quote_identifier(name: str) -> str:
+    """Quote a single SQL identifier per PostgreSQL/Redshift quoting rules.
+
+    Wraps the identifier in double quotes and escapes any embedded double
+    quotes by doubling them. This mirrors the escaping performed by
+    ``psycopg2.sql.Identifier``, which we cannot use directly here because it
+    requires a live connection (for encoding) to render, while queries in
+    this module are built ahead of, and independently of, any connection
+    (e.g. for dry-run display). Quoting spec-supplied names this way is what
+    prevents them from being interpreted as SQL syntax (issue #70).
+    """
+    return '"' + name.replace('"', '""') + '"'
+
+
+def quote_qualified_identifier(name: str) -> str:
+    """Quote a possibly dot-qualified identifier (e.g. ``db.schema.table``).
+
+    Each dot-separated part is quoted individually so a malicious part can't
+    inject a fake ``.`` separator or otherwise escape its own quoting.
+    """
+    return ".".join(quote_identifier(part) for part in name.split("."))
+
+
+def quote_literal(value: str) -> str:
+    """Quote a SQL string literal, escaping embedded single quotes.
+
+    Used for spec-supplied values (like passwords) that are interpolated as
+    string literals rather than identifiers.
+    """
+    return "'" + value.replace("'", "''") + "'"
+
+
 class OperationDispatch:
     """Decorator to dispatch on operation attribute state.
 
@@ -181,14 +213,14 @@ class UserManagementOperation(ManagementOperation):
             )
 
         return "CREATE USER {name}{password}{is_superuser};".format(
-            name=self.subject.name,
+            name=quote_identifier(self.subject.name),
             is_superuser=" CREATEUSER" if self.subject.is_superuser is True else "",
-            password=f" PASSWORD '{self.subject.password}'",
+            password=f" PASSWORD {quote_literal(str(self.subject.password))}",
         )
 
     @build_query.register(Operation.DROP)
     def build_drop_query(self) -> str:
-        return f"DROP USER {self.subject.name};"
+        return f"DROP USER {quote_identifier(self.subject.name)};"
 
     @build_query.register(Operation.GRANT)
     def build_grant_query(self) -> str:
@@ -215,12 +247,14 @@ class UserManagementOperation(ManagementOperation):
             return (
                 f"GRANT {self.privilege.action.name} ON ALL "
                 f"{_type.name + 'S'} IN SCHEMA "
-                f"{db.name}.{schema.name} TO {self.subject.name};"
+                f"{quote_identifier(db.name)}.{quote_identifier(schema.name)} "
+                f"TO {quote_identifier(self.subject.name)};"
             )
 
         return (
             f"GRANT {self.privilege.action.name} ON "
-            f"{_type.name} {self.privilege.database_object.name} TO {self.subject.name};"
+            f"{_type.name} {quote_qualified_identifier(self.privilege.database_object.name)} "
+            f"TO {quote_identifier(self.subject.name)};"
         )
 
     @build_query.register(Operation.DROP_FROM_GROUP)
@@ -233,7 +267,10 @@ class UserManagementOperation(ManagementOperation):
             )
 
         op = self.operation.canonical
-        return f"ALTER GROUP {self.group.name} {op} USER {self.subject.name};"
+        return (
+            f"ALTER GROUP {quote_identifier(self.group.name)} {op} "
+            f"USER {quote_identifier(self.subject.name)};"
+        )
 
     @build_query.register(Operation.ALTER_OWNER)
     def build_ownership_query(self) -> str:
@@ -244,8 +281,9 @@ class UserManagementOperation(ManagementOperation):
             )
 
         return (
-            f"ALTER {self.database_object._type.name} {self.database_object.name} "
-            f"OWNER TO {self.subject.name};"
+            f"ALTER {self.database_object._type.name} "
+            f"{quote_qualified_identifier(self.database_object.name)} "
+            f"OWNER TO {quote_identifier(self.subject.name)};"
         )
 
 
@@ -262,11 +300,11 @@ class GroupManagementOperation(ManagementOperation):
 
     @build_query.register(Operation.CREATE)
     def build_create_query(self) -> str:
-        return f"CREATE GROUP {self.subject.name};"
+        return f"CREATE GROUP {quote_identifier(self.subject.name)};"
 
     @build_query.register(Operation.DROP)
     def build_drop_query(self) -> str:
-        return f"DROP GROUP {self.subject.name};"
+        return f"DROP GROUP {quote_identifier(self.subject.name)};"
 
     @build_query.register(Operation.GRANT)
     def build_grant_query(self) -> str:
@@ -293,12 +331,14 @@ class GroupManagementOperation(ManagementOperation):
             return (
                 f"GRANT {self.privilege.action.name} ON ALL "
                 f"{_type.name + 'S'} IN SCHEMA "
-                f"{db.name}.{schema.name} TO {self.subject.name};"
+                f"{quote_identifier(db.name)}.{quote_identifier(schema.name)} "
+                f"TO {quote_identifier(self.subject.name)};"
             )
 
         return (
             f"GRANT {self.privilege.action.name} ON "
-            f"{_type.name} {self.privilege.database_object.name} TO {self.subject.name};"
+            f"{_type.name} {quote_qualified_identifier(self.privilege.database_object.name)} "
+            f"TO {quote_identifier(self.subject.name)};"
         )
 
 
