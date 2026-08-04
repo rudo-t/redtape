@@ -35,3 +35,31 @@ jobs:
         run: uv run --with vulture vulture redtape/ whitelist.py --min-confidence 80
       - name: Run unit tests with pytest
         run: uv run --with pytest pytest -v --cov=./redtape --cov-report term-missing tests/ --ignore=tests/integration
+
+  # Integration tests run against a real test/dev Redshift cluster, because
+  # redtape's read/export path uses Redshift-only SQL (svv_* system views,
+  # pg_get_all_external_schemas(), VARCHAR(MAX)) that no Postgres-based emulator
+  # implements. The job is intentionally NON-BLOCKING (continue-on-error) and is
+  # not a required status check, so it informs without gating merges. It needs a
+  # REDTAPE_INTEGRATION_DSN secret (a libpq DSN for the cluster); without it, or
+  # on forked PRs where secrets are unavailable, the suite skips cleanly.
+  integration:
+    name: Integration (real Redshift, non-blocking)
+    needs: test
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Install redtape with uv
+        run: uv sync --group dev
+      - name: Run integration tests against test/dev Redshift
+        env:
+          REDTAPE_INTEGRATION_DSN: ${{ secrets.REDTAPE_INTEGRATION_DSN }}
+        run: |
+          if [ -z "$REDTAPE_INTEGRATION_DSN" ]; then
+            echo "REDTAPE_INTEGRATION_DSN secret not set — skipping integration tests."
+            exit 0
+          fi
+          uv run --with pytest pytest tests/integration/ -m integration -v
