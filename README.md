@@ -2,10 +2,6 @@
 
 A permission management tool for AWS Redshift, with plans to extend it to other database systems. Inspired by [permifrost](https://gitlab.com/gitlab-data/permifrost/), and [pgbedrock](https://github.com/Squarespace/pgbedrock).
 
-## Installing
-
-`redtape` is not published to PyPI; install it directly from the GitHub repo.
-
 ### Repo
 
 Clone this repo and install with `uv`:
