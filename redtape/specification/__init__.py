@@ -24,8 +24,6 @@ from .models import (
     Group,
     Operation,
     Ownerships,
-    Password,
-    PasswordType,
     Privilege,
     Privileges,
     Specification,
@@ -42,8 +40,6 @@ __all__ = [
     "Group",
     "Operation",
     "Ownerships",
-    "Password",
-    "PasswordType",
     "Privilege",
     "Privileges",
     "Specification",
@@ -114,20 +110,6 @@ def _(value: Ownerships, attr, inst) -> "dict[str, Any]":
         nested_ownerships[object_key] = [obj.name.lower() for obj in object_group]
 
     return nested_ownerships
-
-
-@serializer.register
-def _(value: Password, attr, inst) -> "dict[str, str]":
-    """Serialize Password by renaming attributes."""
-
-    d = {
-        "type": value._type.value,
-    }
-    if value.value is not None:
-        d["value"] = value.value
-    if value.salt is not None:
-        d["salt"] = value.salt
-    return d
 
 
 @serializer.register
@@ -230,14 +212,6 @@ def _deserialize_ownerships(d: dict[str, Any], *args, **kwargs) -> Ownerships:
 
 _converter.register_structure_hook(Ownerships, _deserialize_ownerships)
 
-_converter.register_structure_hook(
-    Password,
-    cattrs.gen.make_dict_structure_fn(
-        Password,
-        _converter,
-        _type=cattrs.gen.override(rename="type"),
-    ),
-)
 _converter.register_unstructure_hook(
     Group,
     cattrs.gen.make_dict_unstructure_fn(
