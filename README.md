@@ -2,24 +2,24 @@
 
 A permission management tool for AWS Redshift, with plans to extend it to other database systems. Inspired by [permifrost](https://gitlab.com/gitlab-data/permifrost/), and [pgbedrock](https://github.com/Squarespace/pgbedrock).
 
-## Installing
-
 ### Repo
 
 Clone this repo and install with `uv`:
 
 ```sh
-git clone git@github.com:tomasfarias/redtape.git redtape
+git clone git@github.com:energy-solution/redtape.git redtape
 cd redtape
 uv sync --group dev
 ```
 
-### PyPI
+### pip / uv, without cloning
 
-Install with `pip`:
+Install straight from GitHub:
 
 ```sh
-python -m pip install redtape-py
+pip install git+https://github.com/energy-solution/redtape.git
+# or
+uv pip install git+https://github.com/energy-solution/redtape.git
 ```
 
 ## Usage
@@ -275,7 +275,6 @@ redtape validate --require-owner spec.yml
   - [ ] Integration tests against PostgreSQL 8.1 (should closely mimic Redshift).
   - [ ] Unit testing of queries generated.
 - [ ] CI/CD:
-  - [ ] Get auto-deployment working again.
   - [ ] Remove codecov.
 - [ ] Documentation.
 - [ ] Missing features:
