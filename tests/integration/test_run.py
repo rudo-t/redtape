@@ -9,8 +9,6 @@ from redtape.specification import (
     Action,
     DatabaseObject,
     DatabaseObjectType,
-    Password,
-    PasswordType,
     Privilege,
     Privileges,
     Specification,
@@ -30,7 +28,6 @@ def test_grant_privilege_applied(connector):
     desired_user = User(
         name="redtape_test_user",
         is_superuser=False,
-        password=Password(type=PasswordType.PLAIN, value="TestPass1", salt=None),
         privileges=Privileges([priv]),
     )
     desired = Specification(users=[desired_user], groups=[])

@@ -13,8 +13,6 @@ from redtape.specification import (
     DatabaseObjectType,
     Group,
     Ownerships,
-    Password,
-    PasswordType,
     Privilege,
     Privileges,
     Specification,
@@ -35,10 +33,6 @@ def test_read_from_yaml(spec_file):
     assert user.is_superuser is True
     assert user.name == "test_user_1"
     assert user.member_of == {"my_user_group_1", "my_user_group_2"}
-
-    password = Password(type=PasswordType.MD5, value="md5thisisnotanmd5hash", salt=None)
-
-    assert user.password == password
 
 
 def test_user_serialize_to_dict(spec_file):
@@ -64,17 +58,12 @@ def test_user_serialize_to_dict(spec_file):
         is_superuser=False,
         member_of={"a_user_group_1", "a_user_group_2"},
         owns=Ownerships([owns_1, owns_2]),
-        password=Password(type=PasswordType.PLAIN, value="aplainpassword", salt=None),
         privileges=Privileges([priv_1, priv_2]),
     )
     expected = {
         "name": "test_user_1",
         "is_superuser": False,
         "member_of": {"a_user_group_1", "a_user_group_2"},
-        "password": {
-            "type": "plain",
-            "value": "aplainpassword",
-        },
         "owns": {
             "table": ["one_table"],
             "schema": ["a_schema"],
@@ -120,17 +109,12 @@ def test_user_deserialize_from_dict(spec_file):
         is_superuser=False,
         member_of={"a_user_group_1", "a_user_group_2"},
         owns=Ownerships([owns_1, owns_2]),
-        password=Password(type=PasswordType.PLAIN, value="aplainpassword", salt=None),
         privileges=Privileges([priv_1, priv_2]),
     )
     user_dict = {
         "name": "test_user_1",
         "is_superuser": False,
         "member_of": {"a_user_group_1", "a_user_group_2"},
-        "password": {
-            "type": "plain",
-            "value": "aplainpassword",
-        },
         "owns": {
             "table": ["one_table"],
             "schema": ["a_schema"],
@@ -310,7 +294,6 @@ def test_specification_serialize_to_dict():
         name="test_user_1",
         is_superuser=False,
         member_of={"a_user_group_1", "test_group_1"},
-        password=Password(type=PasswordType.PLAIN, value="aplainpassword", salt=None),
         privileges=Privileges([priv_1, priv_2]),
     )
 
@@ -322,10 +305,6 @@ def test_specification_serialize_to_dict():
                 "name": "test_user_1",
                 "is_superuser": False,
                 "member_of": {"a_user_group_1", "test_group_1"},
-                "password": {
-                    "type": "plain",
-                    "value": "aplainpassword",
-                },
                 "privileges": {
                     "table": {
                         "select": [
@@ -872,82 +851,6 @@ def test_user_validate_rejects_malicious_owned_database_object_name():
     assert any("not a valid Redshift identifier" in f.message for f in failures)
 
 
-def test_password_str_plain():
-    pw = Password(type=PasswordType.PLAIN, value="MySecret1", salt=None)
-    assert str(pw) == "MySecret1"
-
-
-def test_password_str_md5():
-    pw = Password(type=PasswordType.MD5, value="abc123hash", salt=None)
-    assert str(pw) == "md5abc123hash"
-
-
-def test_password_str_sha256():
-    pw = Password(type=PasswordType.SHA256, value="deadbeef", salt=None)
-    assert str(pw) == "sha256|deadbeef"
-
-
-def test_password_str_sha256_with_salt():
-    pw = Password(type=PasswordType.SHA256, value="deadbeef", salt="abc")
-    result = str(pw)
-    assert result.endswith("|abc")
-    assert "{self.salt}" not in result
-
-
-def test_password_str_disabled():
-    pw = Password(type=PasswordType.DISABLED)
-    assert str(pw) == "DISABLED"
-
-
-def test_password_validate_valid():
-    pw = Password(type=PasswordType.PLAIN, value="Secret123", salt=None)
-    success, failures = pw.validate()
-    assert success is True
-    assert failures is None
-
-
-def test_password_validate_too_short():
-    """PLAIN password shorter than 8 chars fails validation."""
-    pw = Password(type=PasswordType.PLAIN, value="Sh0rt", salt=None)
-    success, failures = pw.validate()
-    assert success is False
-    assert failures is not None
-
-
-def test_password_validate_length_message_interpolates():
-    """Out-of-range password length appears as an integer in the error message."""
-    value = "Sh0rt"
-    pw = Password(type=PasswordType.PLAIN, value=value, salt=None)
-    success, failures = pw.validate()
-    assert success is False
-    assert any(str(len(value)) in f.message for f in failures)
-    assert not any("{len(self.value)}" in f.message for f in failures)
-
-
-def test_password_validate_no_uppercase():
-    """PLAIN password with no uppercase char fails validation."""
-    pw = Password(type=PasswordType.PLAIN, value="secret1234", salt=None)
-    success, failures = pw.validate()
-    assert success is False
-    assert any("uppercase" in f.message for f in failures)
-
-
-def test_password_validate_no_lowercase():
-    """PLAIN password with no lowercase char fails validation."""
-    pw = Password(type=PasswordType.PLAIN, value="SECRET1234", salt=None)
-    success, failures = pw.validate()
-    assert success is False
-    assert any("lowercase" in f.message for f in failures)
-
-
-def test_password_validate_no_digit():
-    """PLAIN password with no digit fails validation."""
-    pw = Password(type=PasswordType.PLAIN, value="Secretsecret", salt=None)
-    success, failures = pw.validate()
-    assert success is False
-    assert any("digit" in f.message for f in failures)
-
-
 def test_user_add_privilege_creates_set():
     """add_privilege creates a Privileges set when privileges is None."""
     user = User(name="alice", is_superuser=False)
@@ -997,17 +900,6 @@ def test_user_validate_invalid_privilege():
     success, failures = user.validate()
     assert success is False
     assert failures is not None and len(failures) == 1
-
-
-def test_user_validate_invalid_password():
-    """User.validate propagates password validation failures."""
-    pw = Password(type=PasswordType.PLAIN, value="weak", salt=None)
-    user = User(
-        name="alice", is_superuser=False, privileges=Privileges([]), password=pw
-    )
-    success, failures = user.validate()
-    assert success is False
-    assert failures is not None
 
 
 def test_group_add_privilege_creates_set():
@@ -1225,33 +1117,6 @@ def test_real_redshift_connector_opens_connection_once(monkeypatch):
         assert list(connector.iter_schemas()) == []
 
     assert open_calls == 1
-
-
-def test_user_validate_invalid_password_with_no_privileges():
-    """A user with no privileges must still have its password validated (issue #13)."""
-    user = User(
-        name="test_user_1",
-        is_superuser=False,
-        password=Password(type=PasswordType.PLAIN, value="weak"),
-        privileges=None,
-    )
-    success, failures = user.validate()
-    assert success is False
-    assert failures is not None
-    assert len(failures) > 0
-
-
-def test_user_validate_valid_password_with_no_privileges():
-    """A user with no privileges and a valid password passes validation (issue #13)."""
-    user = User(
-        name="test_user_1",
-        is_superuser=False,
-        password=Password(type=PasswordType.PLAIN, value="ValidPassw0rd"),
-        privileges=None,
-    )
-    success, failures = user.validate()
-    assert success is True
-    assert failures is None
 
 
 def test_validate_passes_without_require_owner_when_no_owners():

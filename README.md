@@ -2,24 +2,24 @@
 
 A permission management tool for AWS Redshift, with plans to extend it to other database systems. Inspired by [permifrost](https://gitlab.com/gitlab-data/permifrost/), and [pgbedrock](https://github.com/Squarespace/pgbedrock).
 
-## Installing
-
 ### Repo
 
 Clone this repo and install with `uv`:
 
 ```sh
-git clone git@github.com:tomasfarias/redtape.git redtape
+git clone git@github.com:energy-solution/redtape.git redtape
 cd redtape
 uv sync --group dev
 ```
 
-### PyPI
+### pip / uv, without cloning
 
-Install with `pip`:
+Install straight from GitHub:
 
 ```sh
-python -m pip install redtape-py
+pip install git+https://github.com/energy-solution/redtape.git
+# or
+uv pip install git+https://github.com/energy-solution/redtape.git
 ```
 
 ## Usage
@@ -150,9 +150,6 @@ users:
         member_of:
             - group_name
             - ...
-        password:
-            type: str
-            value: str
         privileges:
             table:
                 select:
@@ -220,6 +217,16 @@ users:
                 - ...
 ```
 
+### Passwords are out of scope
+
+`redtape` does not set or store user passwords. Users are created with
+`CREATE USER name PASSWORD DISABLE`, which disables password-based login
+entirely — the password is never persisted, so it can never leak through a
+spec file committed to version control (a spec is normally committed for a
+declarative, CI-driven workflow like this one). Provisioning login
+credentials for a user (e.g. via IAM/temporary-credential authentication) is
+a separate, out-of-band concern; see issue #7.
+
 ## Ownership
 
 A user may be declared as the owner of database objects via the `owns:` block.
@@ -268,7 +275,6 @@ redtape validate --require-owner spec.yml
   - [ ] Integration tests against PostgreSQL 8.1 (should closely mimic Redshift).
   - [ ] Unit testing of queries generated.
 - [ ] CI/CD:
-  - [ ] Get auto-deployment working again.
   - [ ] Remove codecov.
 - [ ] Documentation.
 - [ ] Missing features:

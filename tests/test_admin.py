@@ -25,8 +25,6 @@ from redtape.specification import (
     Group,
     Operation,
     Ownerships,
-    Password,
-    PasswordType,
     Privilege,
     Privileges,
     Specification,
@@ -61,7 +59,6 @@ def user():
         name="test_user_1",
         is_superuser=False,
         member_of={"a_user_group_1", "a_user_group_2"},
-        password=Password(type=PasswordType.PLAIN, value="aplainpassword", salt=None),
     )
     return user
 
@@ -85,7 +82,7 @@ def test_user_management_operation_create_user(user):
     )
 
     result = op.build_query()
-    expected = "CREATE USER \"test_user_1\" PASSWORD 'aplainpassword';"  # pragma: allowlist secret
+    expected = 'CREATE USER "test_user_1" PASSWORD DISABLE;'
 
     assert result == expected
 
@@ -311,20 +308,6 @@ def test_user_management_operation_grant_quotes_malicious_names():
     expected_user = '"' + malicious_user.replace('"', '""') + '"'
     expected_table = '"' + malicious_table.replace('"', '""') + '"'
     assert result == f"GRANT SELECT ON TABLE {expected_table} TO {expected_user};"
-
-
-def test_user_management_operation_create_quotes_malicious_password():
-    """A malicious value must not break out of its string literal."""
-    subject = User(
-        name="test_user_1",
-        is_superuser=False,
-        password=Password(type=PasswordType.PLAIN, value="a' OR '1'='1", salt=None),
-    )
-    op = UserManagementOperation(operation=Operation.CREATE, subject=subject)
-
-    result = op.build_query()
-
-    assert result == "CREATE USER \"test_user_1\" PASSWORD 'a'' OR ''1''=''1';"
 
 
 def test_group_management_operation_create(group):
@@ -628,23 +611,11 @@ def test_operation_dispatch():
     assert FakeManagementOperation(Operation.ALTER_OWNER).dispatch() == "ALTER_OWNER"
 
 
-def test_user_management_operation_create_no_password():
-    """CREATE user with no password raises TypeError."""
-    passwordless_user = User(name="bob", is_superuser=False)
-    op = UserManagementOperation(
-        operation=Operation.CREATE,
-        subject=passwordless_user,
-    )
-    with pytest.raises(TypeError):
-        op.build_query()
-
-
 def test_trainer_creates_new_user():
     """Trainer emits CREATE for a user present in desired but absent from current."""
     desired_user = User(
         name="new_user",
         is_superuser=False,
-        password=Password(type=PasswordType.PLAIN, value="Secret123", salt=None),
     )
     trainer = DatabaseAdministratorTrainer(
         desired_spec=Specification(users=[desired_user], groups=[]),
@@ -786,7 +757,6 @@ def test_create_filters_current_side_consistently_for_users():
     desired_user = User(
         name="bob",
         is_superuser=False,
-        password=Password(type=PasswordType.PLAIN, value="Secret123", salt=None),
     )
     current_user = User(name="bob", is_superuser=True)
 

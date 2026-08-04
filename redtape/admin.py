@@ -49,15 +49,6 @@ def quote_qualified_identifier(name: str) -> str:
     return ".".join(quote_identifier(part) for part in name.split("."))
 
 
-def quote_literal(value: str) -> str:
-    """Quote a SQL string literal, escaping embedded single quotes.
-
-    Used for spec-supplied values that are interpolated as string literals
-    rather than identifiers.
-    """
-    return "'" + value.replace("'", "''") + "'"
-
-
 class OperationDispatch:
     """Decorator to dispatch on operation attribute state.
 
@@ -207,15 +198,12 @@ class UserManagementOperation(ManagementOperation):
 
     @build_query.register(Operation.CREATE)
     def build_create_query(self) -> str:
-        if self.subject.password is None:
-            raise TypeError(
-                f"Creating a user in Redshift requires a password not {type(self.subject.password)}."
-            )
-
-        return "CREATE USER {name}{password}{is_superuser};".format(
+        # redtape does not manage user passwords (#71): password-based login
+        # is disabled outright, and provisioning credentials (e.g. IAM auth)
+        # is a separate out-of-band concern (#7).
+        return "CREATE USER {name} PASSWORD DISABLE{is_superuser};".format(
             name=quote_identifier(self.subject.name),
             is_superuser=" CREATEUSER" if self.subject.is_superuser is True else "",
-            password=f" PASSWORD {quote_literal(str(self.subject.password))}",
         )
 
     @build_query.register(Operation.DROP)
