@@ -26,7 +26,7 @@ from redtape.connectors import Database, RedshiftConnector, Schema, Table
 # meant as defense in depth against spec-supplied names carrying characters
 # with special meaning in SQL (quotes, semicolons, comment markers, etc.),
 # on top of the identifier-quoting done when building queries (see
-# redtape/admin.py, issue #70).
+# redtape/admin.py).
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 

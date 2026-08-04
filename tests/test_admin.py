@@ -257,7 +257,7 @@ def test_user_management_operation_alter_owner_requires_database_object(user):
     ids=["single-quote", "double-quote", "sql-comment"],
 )
 def test_user_management_operation_drop_quotes_malicious_name(malicious_name):
-    """A malicious subject name must be safely quoted, never break out (#70)."""
+    """A malicious subject name must be safely quoted, never break out."""
     subject = User(name=malicious_name, is_superuser=False)
     op = UserManagementOperation(operation=Operation.DROP, subject=subject)
 
@@ -280,7 +280,7 @@ def test_user_management_operation_drop_quotes_malicious_name(malicious_name):
     ids=["single-quote", "double-quote", "sql-comment"],
 )
 def test_group_management_operation_create_quotes_malicious_name(malicious_name):
-    """A malicious group name must be safely quoted, never break out (#70)."""
+    """A malicious group name must be safely quoted, never break out."""
     subject = Group(name=malicious_name)
     op = GroupManagementOperation(operation=Operation.CREATE, subject=subject)
 
@@ -291,7 +291,7 @@ def test_group_management_operation_create_quotes_malicious_name(malicious_name)
 
 
 def test_user_management_operation_grant_quotes_malicious_names():
-    """Malicious subject and database object names must both be quoted (#70)."""
+    """Malicious subject and database object names must both be quoted."""
     malicious_user = "evil'); DROP TABLE users; --"
     malicious_table = 'evil"table'
 
@@ -314,7 +314,7 @@ def test_user_management_operation_grant_quotes_malicious_names():
 
 
 def test_user_management_operation_create_quotes_malicious_password():
-    """A malicious password value must not break out of its string literal (#70)."""
+    """A malicious value must not break out of its string literal."""
     subject = User(
         name="test_user_1",
         is_superuser=False,

@@ -35,7 +35,7 @@ def quote_identifier(name: str) -> str:
     requires a live connection (for encoding) to render, while queries in
     this module are built ahead of, and independently of, any connection
     (e.g. for dry-run display). Quoting spec-supplied names this way is what
-    prevents them from being interpreted as SQL syntax (issue #70).
+    prevents them from being interpreted as SQL syntax.
     """
     return '"' + name.replace('"', '""') + '"'
 
@@ -52,8 +52,8 @@ def quote_qualified_identifier(name: str) -> str:
 def quote_literal(value: str) -> str:
     """Quote a SQL string literal, escaping embedded single quotes.
 
-    Used for spec-supplied values (like passwords) that are interpolated as
-    string literals rather than identifiers.
+    Used for spec-supplied values that are interpolated as string literals
+    rather than identifiers.
     """
     return "'" + value.replace("'", "''") + "'"
 

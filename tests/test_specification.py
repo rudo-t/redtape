@@ -809,7 +809,7 @@ def test_privilege_validate_unsupported_action():
     ids=["single-quote", "double-quote", "sql-comment"],
 )
 def test_privilege_validate_rejects_malicious_database_object_name(malicious_name):
-    """A database object name with SQL metacharacters must fail validation (#70)."""
+    """A database object name with SQL metacharacters must fail validation."""
     priv = Privilege(
         database_object=DatabaseObject(
             name=malicious_name, type=DatabaseObjectType.TABLE
@@ -832,7 +832,7 @@ def test_privilege_validate_rejects_malicious_database_object_name(malicious_nam
     ids=["single-quote", "double-quote", "sql-comment"],
 )
 def test_user_validate_rejects_malicious_name(malicious_name):
-    """A user name with SQL metacharacters must fail validation (#70)."""
+    """A user name with SQL metacharacters must fail validation."""
     user = User(name=malicious_name, is_superuser=False)
     success, failures = user.validate()
     assert success is False
@@ -850,7 +850,7 @@ def test_user_validate_rejects_malicious_name(malicious_name):
     ids=["single-quote", "double-quote", "sql-comment"],
 )
 def test_group_validate_rejects_malicious_name(malicious_name):
-    """A group name with SQL metacharacters must fail validation (#70)."""
+    """A group name with SQL metacharacters must fail validation."""
     group = Group(name=malicious_name)
     success, failures = group.validate()
     assert success is False
@@ -859,7 +859,7 @@ def test_group_validate_rejects_malicious_name(malicious_name):
 
 
 def test_user_validate_rejects_malicious_owned_database_object_name():
-    """A malicious name on an owned DatabaseObject must fail validation (#70)."""
+    """A malicious name on an owned DatabaseObject must fail validation."""
     user = User(name="valid_user", is_superuser=False)
     user.add_owned_db_object(
         DatabaseObject(
