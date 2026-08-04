@@ -1,6 +1,6 @@
 # Add vulture for dead code detection
 
-Status: needs-triage
+Status: done
 
 `filter_database_objects` was defined, stored on the trainer, and never called — vulture would have caught it. Run at 80% confidence to avoid noise from `OperationDispatch` dynamic dispatch.
 
@@ -16,3 +16,7 @@ Status: needs-triage
         args: [redtape/, --min-confidence, "80"]
   ```
 - [ ] Create a `whitelist.py` for any false positives (e.g. `OperationDispatch.register` callbacks)
+
+## Resolution
+
+Closed via GitHub issue #44, merged in PR #53.

@@ -1,6 +1,6 @@
 # Replace black + isort + flake8 with ruff
 
-Status: ready-for-agent
+Status: done
 
 Three separate tools replaced by one. Ruff is maintained by the same team as `uv` (already in use), 10–100× faster, and configured entirely in `pyproject.toml`. The existing `isort` config has stale `py_version = 38` despite the project requiring Python 3.12+.
 
@@ -27,3 +27,7 @@ Three separate tools replaced by one. Ruff is maintained by the same team as `uv
 ## Notes
 
 The `F821` (undefined name) rule would have caught the `build_grant_query` NameError bug before it was committed.
+
+## Resolution
+
+Closed via GitHub issue #42, merged in PR #53.

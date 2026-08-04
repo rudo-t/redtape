@@ -1,6 +1,6 @@
 # redtape
 
-Declarative Redshift permission management CLI. Reads a YAML spec describing the desired state of users, groups, and privileges; diffs against live Redshift; emits SQL to close the gap.
+Declarative Amazon Redshift privilege-management CLI. See [CONTEXT.md](CONTEXT.md) for the domain glossary and MVP scope.
 
 ## Development setup
 
@@ -8,7 +8,7 @@ Declarative Redshift permission management CLI. Reads a YAML spec describing the
 uv sync --group dev   # install all dependencies (one-time)
 ```
 
-Run every dev tool through `uv` so it resolves against the locked environment — do **not** call bare `pytest`/`ruff`/`mypy` or use `poetry`:
+Run every dev tool through `uv` so it resolves against the locked environment — do **not** call bare `pytest`/`ruff`/`mypy`:
 
 ```bash
 # Tests
@@ -39,6 +39,7 @@ for ad-hoc DDL only; the export tests will not pass against it.
 ## Code quality
 
 A single toolchain is configured in `pyproject.toml`. Run all three before opening a PR; they must be clean.
+CI (`.github/workflows/test.yml`) runs these same gates on every PR (Python 3.12), so a clean local run matches CI.
 
 ```bash
 uv run --with ruff ruff check .          # lint  (ruff replaces black + isort + flake8)
@@ -68,3 +69,7 @@ Default five-state vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, 
 ### Domain docs
 
 Single-context repo — one `CONTEXT.md` at the root and `docs/adr/` for architectural decisions. See `docs/agents/domain.md`.
+
+### Security
+
+`docs/security/THREAT_MODEL.md` documents assets, trust boundaries, and known gaps (unparameterized SQL for spec-supplied identifiers, plaintext passwords in run/dry-run output, no enforced TLS to Redshift, no cross-operation transaction). Update it when connectors.py, admin.py, or the release workflows change in a way that adds or closes a threat.

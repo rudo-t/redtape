@@ -1,6 +1,6 @@
 # Update .pre-commit-config.yaml — replace stale hooks
 
-Status: ready-for-agent
+Status: done
 
 `black` is pinned at `21.12b0` (dev deps require `^24.3`), `pre-commit-hooks` is on `v4.0.1`, `detect-secrets` is on `v1.1.0`. flake8 and mypy are in dev deps but absent from pre-commit entirely.
 
@@ -44,3 +44,7 @@ repos:
 ## Notes
 
 Blocked on issue #01 (ruff migration) — remove black/isort hooks before adding ruff hook.
+
+## Resolution
+
+Closed via GitHub issue #45, merged in PR #53.

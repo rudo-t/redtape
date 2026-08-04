@@ -17,18 +17,10 @@ jobs:
           checkName: Test
           ref: ${{ github.sha }}
       - uses: actions/checkout@v4
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
-      - name: Install Poetry
-        uses: abatilo/actions-poetry@v2
-        with:
-          poetry-version: 1.8.2
-      - name: Install redtape with Poetry
-        run: poetry install
-      - name: Build redtape with Poetry
-        run: poetry build
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Build redtape
+        run: uv build
       - name: Get latest tag
         id: latest
         uses: WyriHaximus/github-action-get-previous-tag@v1.2.0
@@ -38,6 +30,6 @@ jobs:
           repo_token: "${{ secrets.PA_TOKEN }}"
           prerelease: false
           files: |
-            dist/redtape_py-${{ steps.latest.outputs.tag }}.tar.gz
-            dist/redtape_py-${{ steps.latest.outputs.tag }}-py2.py3-none-any.whl
+            dist/*.tar.gz
+            dist/*.whl
         id: automatic_releases

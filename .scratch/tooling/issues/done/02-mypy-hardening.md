@@ -1,6 +1,6 @@
 # Harden mypy configuration
 
-Status: needs-triage
+Status: done
 
 mypy is in dev dependencies but its config is minimal and it is not in pre-commit.
 
@@ -16,3 +16,7 @@ mypy is in dev dependencies but its config is minimal and it is not in pre-commi
   ```
 - [ ] Add mypy to `.pre-commit-config.yaml` (see issue #04)
 - [ ] Resolve any new type errors surfaced by `strict = true`
+
+## Resolution
+
+Closed via GitHub issue #43, merged in PR #53.
