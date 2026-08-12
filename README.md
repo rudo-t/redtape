@@ -61,6 +61,39 @@ Options:
   --help                          Show this message and exit.
 ```
 
+### Connection security (TLS)
+
+`RedshiftConnector` always connects with `sslmode=verify-full` by default, so the
+connection is encrypted and the server certificate is verified against a trusted CA —
+libpq's own default (`prefer`) would silently allow an unencrypted connection, and
+`require` alone does not verify the certificate.
+
+Configure it, like the other connection settings, either through environment
+variables or the `.redtape.ini` file (section `redtape.redshift`, pointed to via
+`REDTAPE_CONFIG`):
+
+```sh
+REDTAPE_REDSHIFT_SSLMODE=verify-full
+REDTAPE_REDSHIFT_SSLROOTCERT=/path/to/redshift-ca-bundle.pem
+```
+
+```ini
+[redtape.redshift]
+sslmode = verify-full
+sslrootcert = /path/to/redshift-ca-bundle.pem
+```
+
+`sslrootcert` should point at the Amazon Redshift CA bundle so the certificate chain
+can actually be verified — download it from
+[Amazon's Redshift SSL support page](https://docs.aws.amazon.com/redshift/latest/mgmt/connecting-ssl-support.html)
+(currently `redshift-ca-bundle.crt`) and reference the local path where you save it.
+If `sslrootcert` is left unset, libpq falls back to its own default CA locations,
+which may not trust Amazon's CA.
+
+This only covers wire encryption and server verification. It is independent of
+authenticating with IAM credentials instead of a password (tracked separately); both
+are needed for a fully hardened connection.
+
 ## Development
 
 Install dev dependencies once with `uv sync --group dev`, then run tools through `uv` so they resolve against the locked environment (don't call bare `pytest`/`ruff`/`mypy`):

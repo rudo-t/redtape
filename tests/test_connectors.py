@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from unittest import mock
+
 import redtape.connectors as db
-from redtape.connectors import parse_acl
+from redtape.connectors import RedshiftConnector, parse_acl
 
 
 def test_parse_acl():
@@ -70,3 +72,49 @@ def test_group_iter_group_members_populated():
     """iter_group_members yields each user id in order."""
     group = db.Group(groname="members", grosysid=2, grolist=[100, 101, 102])
     assert list(group.iter_group_members()) == [100, 101, 102]
+
+
+def _make_connector(**overrides) -> RedshiftConnector:
+    kwargs = {
+        "dbname": "a_db",
+        "host": "cluster.example.com",
+        "port": 5439,
+        "user": "admin",
+        "password": "secret",
+    }
+    kwargs.update(overrides)
+    return RedshiftConnector(**kwargs)
+
+
+def test_default_sslmode_is_verify_full():
+    """A RedshiftConnector defaults to verified TLS unless told otherwise."""
+    connector = _make_connector()
+
+    assert connector.sslmode == "verify-full"
+    assert connector.sslrootcert is None
+
+
+def test_open_connection_requests_verified_tls_by_default():
+    """open_connection asks psycopg2 for a verified, encrypted connection by default."""
+    connector = _make_connector()
+
+    with mock.patch.object(db.psycopg2, "connect") as mock_connect:
+        connector.open_connection()
+
+    _, kwargs = mock_connect.call_args
+    assert kwargs["sslmode"] == "verify-full"
+    assert "sslrootcert" not in kwargs
+
+
+def test_open_connection_honors_overridden_sslmode_and_sslrootcert():
+    """Overriding sslmode/sslrootcert via config changes what psycopg2.connect receives."""
+    connector = _make_connector(
+        sslmode="verify-ca", sslrootcert="/etc/redtape/redshift-ca-bundle.pem"
+    )
+
+    with mock.patch.object(db.psycopg2, "connect") as mock_connect:
+        connector.open_connection()
+
+    _, kwargs = mock_connect.call_args
+    assert kwargs["sslmode"] == "verify-ca"
+    assert kwargs["sslrootcert"] == "/etc/redtape/redshift-ca-bundle.pem"

@@ -4,6 +4,7 @@ from abc import abstractmethod
 from collections import namedtuple
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Any
 
 import attrs
 import environ
@@ -379,6 +380,13 @@ class RedshiftConnector(DatabaseConnector):
         port (str): The host's port.
         user (str): The user name to connect with.
         password (str): The user name's password.
+        sslmode (str): The libpq SSL mode to request. Defaults to
+            "verify-full" so connections fail closed rather than silently
+            falling back to an unencrypted or unverified channel.
+        sslrootcert (str): Path to a CA bundle used to verify the server's
+            certificate (e.g. the Amazon Redshift/RDS CA bundle). Required
+            for "verify-ca"/"verify-full" unless libpq's default CA store
+            already trusts the server certificate.
     """
 
     dbname = ini_file.secret(None, help="Redshift cluster database.", name="dbname")
@@ -388,6 +396,20 @@ class RedshiftConnector(DatabaseConnector):
     )
     user = ini_file.secret(None, help="Redshift cluster username.", name="user")
     password = ini_file.secret(None, help="Redshift cluster password.", name="password")
+    sslmode = ini_file.secret(
+        "verify-full",
+        help="libpq sslmode for the Redshift connection. Defaults to "
+        "'verify-full' so the server certificate is verified and the "
+        "connection is always encrypted.",
+        name="sslmode",
+    )
+    sslrootcert = ini_file.secret(
+        None,
+        help="Path to a CA bundle used to verify the Redshift server "
+        "certificate (e.g. the Amazon Redshift CA bundle). See README for "
+        "where to obtain it.",
+        name="sslrootcert",
+    )
     db_url = ini_file.secret(None, help="Redshift cluster URL.")
 
     def __attrs_post_init__(self):
@@ -480,14 +502,20 @@ class RedshiftConnector(DatabaseConnector):
                 yield self
 
     def open_connection(self):
+        connect_kwargs: dict[str, Any] = {
+            "dbname": self.dbname,
+            "host": self.host,
+            "port": self.port,
+            "user": self.user,
+            "password": self.password,
+            "sslmode": self.sslmode,
+        }
+
+        if self.sslrootcert is not None:
+            connect_kwargs["sslrootcert"] = self.sslrootcert
+
         try:
-            self._connection = psycopg2.connect(
-                dbname=self.dbname,
-                host=self.host,
-                port=self.port,
-                user=self.user,
-                password=self.password,
-            )
+            self._connection = psycopg2.connect(**connect_kwargs)
         except psycopg2.OperationalError as e:
             raise ConnectionError(f"Failed to connect with {self}") from e
 
@@ -589,6 +617,8 @@ class RedshiftConnector(DatabaseConnector):
                 user=self.user,
                 password=self.password,
                 host=self.host,
+                sslmode=self.sslmode,
+                sslrootcert=self.sslrootcert,
             )
 
             with new_connector.connect() as conn:
