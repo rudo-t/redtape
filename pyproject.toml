@@ -1,6 +1,6 @@
 [project]
 name = "redtape-py"
-version = "0.4.2"
+version = "0.5.0b1"
 description = "A permission management tool for AWS Redshift."
 readme = "README.md"
 license = {text = "MIT"}
