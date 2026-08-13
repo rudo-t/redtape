@@ -28,37 +28,35 @@ uv pip install git+https://github.com/energy-solution/redtape.git
 ❯ redtape run --help
 Usage: redtape run [OPTIONS] [SPEC_FILE]
 
-  Run the queries necessary to apply a specification file.
+ Run the queries necessary to apply a specification file.
 
-Arguments:
-  [SPEC_FILE]  A specification or a path to a file containing it.
-
-Options:
-  --dry / --no-dry                Print changes but do not run them.
-                                  [default: no-dry]
-  --skip-validate / --no-skip-validate
-                                  Skip specification file validation.
-                                  [default: no-skip-validate]
-  --user TEXT                     Apply operations only to users named as
-                                  provided.
-  --group TEXT                    Apply operations only to groups named as
-                                  provided.
-  --operation [CREATE|DROP|DROP_FROM_GROUP|GRANT|REVOKE|ADD_TO_GROUP]
-                                  Apply only provided operations.
-  --dbname TEXT                   A Redshift database name to connect to.
-  --host TEXT                     The host where a Redshift cluster is
-                                  located.
-  --port TEXT                     The port where a Redshift cluster is
-                                  located.
-  --database-user TEXT            A user to connect to Redshift. The user
-                                  should have user-management permissions.
-  --password TEXT                 The passaword of the given Redshift
-                                  username.
-  --connection-string TEXT        A connection string to connect to Redshift.
-  --quiet / --no-quiet            Show no output except of validation errors,
-                                  run errors, and queries.  [default: no-
-                                  quiet]
-  --help                          Show this message and exit.
+╭─ Arguments ────────────────────────────────────────────────────────────────────────────────────────────────╮
+│   spec_file      [SPEC_FILE]  A specification or a path to a file containing it. [default: (STDIN)]        │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --dry              --no-dry                                               Print changes but do not run     │
+│                                                                           them.                            │
+│                                                                           [default: no-dry]                │
+│ --skip-validate    --no-skip-validate                                     Skip specification file          │
+│                                                                           validation.                      │
+│                                                                           [default: no-skip-validate]      │
+│ --user                                   TEXT                             Apply operations only to users   │
+│                                                                           named as provided.               │
+│ --group                                  TEXT                             Apply operations only to groups  │
+│                                                                           named as provided.               │
+│ --operation                              [create|drop|drop_from_group|gr  Apply only provided operations.  │
+│                                          ant|revoke|add_to_group|alter_o                                   │
+│                                          wner]                                                             │
+│ --config                                 PATH                             Path to a Redtape configuration  │
+│                                                                           file for database connections.   │
+│                                                                           The REDSHIFT_CONFIG environment  │
+│                                                                           variable may be set instead.     │
+│ --quiet            --no-quiet                                             Show no output except of         │
+│                                                                           validation errors, run errors,   │
+│                                                                           and queries.                     │
+│                                                                           [default: no-quiet]              │
+│ --help                                                                    Show this message and exit.      │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ### Connection security (TLS)
