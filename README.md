@@ -59,6 +59,37 @@ Usage: redtape run [OPTIONS] [SPEC_FILE]
 ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
+### Export
+
+`redtape export` connects to an existing Redshift database and prints a specification
+describing its current users, groups, and grants — the reverse of `redtape run`. Use it
+to bootstrap a spec file from a database that isn't managed by redtape yet, or to check
+what a database actually looks like against a spec you maintain by hand.
+
+```sh
+❯ redtape export --help
+Usage: redtape export [OPTIONS]
+
+ Export a specification from an existing Redshift connection.
+
+╭─ Options ────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --json      --no-json           Export configuration as JSON instead of YAML. [default: no-json]             │
+│ --config                  PATH  Path to a Redtape configuration file for database connections. The           │
+│                                 REDSHIFT_CONFIG environment variable may be set instead.                     │
+│ --quiet     --no-quiet          Show no output except for validation and/or run errors. [default: no-quiet]  │
+│ --help                          Show this message and exit.                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+Output is written to stdout as YAML by default, matching the format `redtape run` and
+`redtape validate` expect, so it can be piped or redirected straight into a spec file:
+
+```sh
+redtape export --config .redtape.ini > spec.yml
+```
+
+Pass `--json` to get the same specification as JSON instead.
+
 ### Connection security (TLS)
 
 `RedshiftConnector` always connects with `sslmode=verify-full` by default, so the
