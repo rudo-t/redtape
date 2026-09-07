@@ -553,16 +553,16 @@ class DatabaseAdministratorTrainer:
         users_map = {user.name: user for user in users_to_compare}
         group_map = {group.name: group for group in groups}
         for user in users:
-            if user.member_of is None or len(user.member_of) == 0:
+            if user.groups is None or len(user.groups) == 0:
                 continue
 
-            to_operate = user.member_of
+            to_operate = user.groups
 
             # KeyError raised if user doesn't currently exist; TypeError raised
             # if user is not a member of any groups. In either case, no
             # information about current group membership exists.
             with contextlib.suppress(TypeError, KeyError):
-                to_operate = to_operate - users_map[user.name].member_of
+                to_operate = to_operate - users_map[user.name].groups
 
             for group_name in to_operate:
                 group = group_map[group_name]

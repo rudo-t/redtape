@@ -54,7 +54,7 @@ def user():
     user = User(
         name="test_user_1",
         is_superuser=False,
-        member_of={"a_user_group_1", "a_user_group_2"},
+        groups={"a_user_group_1", "a_user_group_2"},
     )
     return user
 
@@ -665,8 +665,8 @@ def test_trainer_drops_group():
 def test_trainer_add_to_group():
     """Trainer emits ADD_TO_GROUP when a user is newly assigned to a group."""
     analysts = Group(name="analysts")
-    current_user = User(name="alice", is_superuser=False, member_of=None)
-    desired_user = User(name="alice", is_superuser=False, member_of={"analysts"})
+    current_user = User(name="alice", is_superuser=False, groups=None)
+    desired_user = User(name="alice", is_superuser=False, groups={"analysts"})
     trainer = DatabaseAdministratorTrainer(
         desired_spec=Specification(users=[desired_user], groups=[analysts]),
         current_spec=Specification(users=[current_user], groups=[]),
@@ -681,8 +681,8 @@ def test_trainer_add_to_group():
 def test_trainer_drop_from_group():
     """Trainer emits DROP_FROM_GROUP when a user is removed from a group."""
     analysts = Group(name="analysts")
-    current_user = User(name="alice", is_superuser=False, member_of={"analysts"})
-    desired_user = User(name="alice", is_superuser=False, member_of=set())
+    current_user = User(name="alice", is_superuser=False, groups={"analysts"})
+    desired_user = User(name="alice", is_superuser=False, groups=set())
     trainer = DatabaseAdministratorTrainer(
         desired_spec=Specification(users=[desired_user], groups=[]),
         current_spec=Specification(users=[current_user], groups=[analysts]),

@@ -115,6 +115,53 @@ The integration tests require a running Redshift-compatible database and are ski
 
 A YAML specification file is used to define groups, users, and their corresponding privileges.
 
+### Privileges: `read`/`write` shorthand
+
+`read` and `write` are the *only* privilege keywords a spec accepts, for both `users` and
+`groups` privilege blocks. Raw SQL action names (`select`, `insert`, `drop`, `execute`,
+`*_with_grant`, etc.) are rejected outright with an error — they are not silently
+ignored or passed through.
+
+Each shorthand expands to a fixed set of underlying grants, per object type:
+
+| Shorthand | Object type | Expands to |
+|---|---|---|
+| `read` | `table` / `view` | `SELECT` |
+| `read` | `schema` | `USAGE` |
+| `read` | `database` | `CONNECT` |
+| `write` | `table` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
+| `write` | `schema` | `USAGE`, `CREATE` |
+| `write` | `database` | *(no mapping — rejected, see below)* |
+
+`function`, `procedure`, and `language` object types have no `read`/`write` mapping at
+all. A spec that declares privileges under any of these is rejected, as is a spec that
+declares `database: write:` (there is no shorthand for database-level write).
+
+#### What this removes
+
+Adopting `read`/`write` shorthand as the sole privilege syntax makes the following
+permanently inexpressible in a redtape spec (following the precedent set by
+[Permifrost](https://gitlab.com/gitlab-data/permifrost/), which made the same
+binary read/write trade-off for Snowflake):
+
+- `DROP`, `REFERENCES` on tables (and their `*_WITH_GRANT` variants)
+- `TEMPORARY` on databases (and its `*_WITH_GRANT` variant)
+- `EXECUTE` on functions/procedures — `function`/`procedure` privileges are entirely
+  unsupported
+- `USAGE` on languages — `language` privileges are entirely unsupported
+- All `*_WITH_GRANT` variants — shorthand has no grant-option concept, so
+  `WITH GRANT OPTION` can no longer be expressed in a spec
+
+If any of these are needed later, they require new shorthand vocabulary (e.g. an
+`admin:`/`execute:`/`use:` term), not a reintroduction of raw action parsing.
+
+`read`/`write` shorthand is only an *input* format: it is expanded into concrete grants
+before validation/diffing and is never stored on the model. `redtape export` still
+describes actual database state using raw grant names, since a live cluster's grants
+may include ones with no shorthand equivalent (e.g. a lone `SELECT` without the rest of
+`write`, or a grant `WITH GRANT OPTION`) — that output is not guaranteed to be
+re-parseable as a spec.
+
 Sample:
 
 ``` yaml
@@ -122,118 +169,82 @@ groups:
     - name: group_name
         privileges:
             table:
-                select:
+                read:
                     - table_name
                     - ...
-                insert:
-                    - table_name
-                    - ...
-                update:
-                    - table_name
-                    - ...
-                drop:
-                    - table_name
-                    - ...
-                delete:
-                    - table_name
-                    - ...
-                references:
+                write:
                     - table_name
                     - ...
 
             database:
-                create:
-                    - database_name
-                    - ...
-                temporary:
-                    - database_name
-                    - ...
-                temp:
+                read:
                     - database_name
                     - ...
 
             schema:
-                create:
+                read:
                     - schema_name
                     - ...
-                usage:
+                write:
                     - schema_name
                     - ...
 
-            function:
-                execute:
-                    - function_name
+roles:
+    - name: role_name
+        member_of:
+            - role_name
+            - ...
+        privileges:
+            table:
+                read:
+                    - table_name
+                    - ...
+                write:
+                    - table_name
                     - ...
 
-            procedure:
-                execute:
-                    - function_name
+            database:
+                read:
+                    - database_name
                     - ...
 
-            language:
-                usage:
-                    - language_name
+            schema:
+                read:
+                    - schema_name
+                    - ...
+                write:
+                    - schema_name
                     - ...
 
 users:
     - name: group_name
         is_superuser: boolean
-        member_of:
+        groups:
             - group_name
+            - ...
+        roles:
+            - role_name
             - ...
         privileges:
             table:
-                select:
+                read:
                     - table_name
                     - ...
-                insert:
-                    - table_name
-                    - ...
-                update:
-                    - table_name
-                    - ...
-                drop:
-                    - table_name
-                    - ...
-                delete:
-                    - table_name
-                    - ...
-                references:
+                write:
                     - table_name
                     - ...
 
             database:
-                create:
-                    - database_name
-                    - ...
-                temporary:
-                    - database_name
-                    - ...
-                temp:
+                read:
                     - database_name
                     - ...
 
             schema:
-                create:
+                read:
                     - schema_name
                     - ...
-                usage:
+                write:
                     - schema_name
-                    - ...
-
-            function:
-                execute:
-                    - function_name
-                    - ...
-
-            procedure:
-                execute:
-                    - function_name
-                    - ...
-
-            language:
-                usage:
-                    - language_name
                     - ...
 
         owns:

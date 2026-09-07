@@ -15,8 +15,11 @@ from redtape.specification import (
     Ownerships,
     Privilege,
     Privileges,
+    Role,
     Specification,
+    UnsupportedPrivilegeError,
     User,
+    expand_action_shorthand,
 )
 
 
@@ -32,7 +35,7 @@ def test_read_from_yaml(spec_file):
 
     assert user.is_superuser is True
     assert user.name == "test_user_1"
-    assert user.member_of == {"my_user_group_1", "my_user_group_2"}
+    assert user.groups == {"my_user_group_1", "my_user_group_2"}
 
 
 def test_user_serialize_to_dict(spec_file):
@@ -56,14 +59,14 @@ def test_user_serialize_to_dict(spec_file):
     user = User(
         name="test_user_1",
         is_superuser=False,
-        member_of={"a_user_group_1", "a_user_group_2"},
+        groups={"a_user_group_1", "a_user_group_2"},
         owns=Ownerships([owns_1, owns_2]),
         privileges=Privileges([priv_1, priv_2]),
     )
     expected = {
         "name": "test_user_1",
         "is_superuser": False,
-        "member_of": {"a_user_group_1", "a_user_group_2"},
+        "groups": {"a_user_group_1", "a_user_group_2"},
         "owns": {
             "table": ["one_table"],
             "schema": ["a_schema"],
@@ -87,7 +90,12 @@ def test_user_serialize_to_dict(spec_file):
 
 
 def test_user_deserialize_from_dict(spec_file):
-    """Test deserializing a User from a dictionary."""
+    """Test deserializing a User from a dictionary.
+
+    `table: {read: [...]}` expands to SELECT only; `schema: {write: [...]}`
+    expands to both USAGE and CREATE, per the read/write shorthand
+    expansion table.
+    """
     priv_1 = Privilege(
         database_object=DatabaseObject(name="one_table", type=DatabaseObjectType.TABLE),
         action=Action.SELECT,
@@ -95,6 +103,10 @@ def test_user_deserialize_from_dict(spec_file):
     priv_2 = Privilege(
         database_object=DatabaseObject(name="a_schema", type=DatabaseObjectType.SCHEMA),
         action=Action.CREATE,
+    )
+    priv_3 = Privilege(
+        database_object=DatabaseObject(name="a_schema", type=DatabaseObjectType.SCHEMA),
+        action=Action.USAGE,
     )
     owns_1 = DatabaseObject(
         "one_table",
@@ -107,26 +119,26 @@ def test_user_deserialize_from_dict(spec_file):
     expected = User(
         name="test_user_1",
         is_superuser=False,
-        member_of={"a_user_group_1", "a_user_group_2"},
+        groups={"a_user_group_1", "a_user_group_2"},
         owns=Ownerships([owns_1, owns_2]),
-        privileges=Privileges([priv_1, priv_2]),
+        privileges=Privileges([priv_1, priv_2, priv_3]),
     )
     user_dict = {
         "name": "test_user_1",
         "is_superuser": False,
-        "member_of": {"a_user_group_1", "a_user_group_2"},
+        "groups": {"a_user_group_1", "a_user_group_2"},
         "owns": {
             "table": ["one_table"],
             "schema": ["a_schema"],
         },
         "privileges": {
             "table": {
-                "select": [
+                "read": [
                     "one_table",
                 ],
             },
             "schema": {
-                "create": [
+                "write": [
                     "a_schema",
                 ]
             },
@@ -182,8 +194,10 @@ def test_database_object_supported_actions():
     supported = [
         Action.TEMPORARY,
         Action.CREATE,
+        Action.CONNECT,
         Action.TEMPORARY_WITH_GRANT,
         Action.CREATE_WITH_GRANT,
+        Action.CONNECT_WITH_GRANT,
     ]
     for action in supported:
         assert DatabaseObject(
@@ -197,9 +211,11 @@ def test_database_object_unsupported_actions():
         Action.USAGE,
         Action.EXECUTE,
         Action.TEMPORARY,
+        Action.CONNECT,
         Action.USAGE_WITH_GRANT,
         Action.EXECUTE_WITH_GRANT,
         Action.TEMPORARY_WITH_GRANT,
+        Action.CONNECT_WITH_GRANT,
     ]
     for action in unsupported:
         assert not DatabaseObject(
@@ -226,6 +242,123 @@ def test_database_object_unsupported_actions():
         assert not DatabaseObject(
             name="test", type=DatabaseObjectType("SCHEMA")
         ).is_action_supported(action)
+
+
+@pytest.mark.parametrize(
+    "object_type,expected_actions",
+    [
+        (DatabaseObjectType.TABLE, frozenset({Action.SELECT})),
+        (DatabaseObjectType.VIEW, frozenset({Action.SELECT})),
+        (DatabaseObjectType.SCHEMA, frozenset({Action.USAGE})),
+        (DatabaseObjectType.DATABASE, frozenset({Action.CONNECT})),
+    ],
+)
+def test_expand_action_shorthand_read(object_type, expected_actions):
+    """`read` expands to SELECT (table/view), USAGE (schema), CONNECT (database)."""
+    assert expand_action_shorthand("read", object_type) == expected_actions
+
+
+@pytest.mark.parametrize(
+    "object_type,expected_actions",
+    [
+        (
+            DatabaseObjectType.TABLE,
+            frozenset({Action.SELECT, Action.INSERT, Action.UPDATE, Action.DELETE}),
+        ),
+        (DatabaseObjectType.SCHEMA, frozenset({Action.USAGE, Action.CREATE})),
+    ],
+)
+def test_expand_action_shorthand_write(object_type, expected_actions):
+    """`write` expands to SELECT/INSERT/UPDATE/DELETE (table), USAGE/CREATE (schema)."""
+    assert expand_action_shorthand("write", object_type) == expected_actions
+
+
+def test_expand_action_shorthand_is_case_insensitive():
+    """`Read`/`READ` etc. expand the same as `read`."""
+    assert expand_action_shorthand("Read", DatabaseObjectType.TABLE) == frozenset(
+        {Action.SELECT}
+    )
+    assert expand_action_shorthand("WRITE", DatabaseObjectType.SCHEMA) == frozenset(
+        {Action.USAGE, Action.CREATE}
+    )
+
+
+def test_expand_action_shorthand_rejects_write_on_database():
+    """`write` has no mapping for DATABASE and must be rejected, not dropped."""
+    with pytest.raises(UnsupportedPrivilegeError):
+        expand_action_shorthand("write", DatabaseObjectType.DATABASE)
+
+
+@pytest.mark.parametrize(
+    "object_type",
+    [
+        DatabaseObjectType.FUNCTION,
+        DatabaseObjectType.PROCEDURE,
+        DatabaseObjectType.LANGUAGE,
+    ],
+)
+@pytest.mark.parametrize("shorthand", ["read", "write"])
+def test_expand_action_shorthand_rejects_unsupported_object_types(
+    object_type, shorthand
+):
+    """FUNCTION/PROCEDURE/LANGUAGE have no read/write mapping at all."""
+    with pytest.raises(UnsupportedPrivilegeError):
+        expand_action_shorthand(shorthand, object_type)
+
+
+@pytest.mark.parametrize(
+    "raw_action", ["select", "insert", "drop", "execute", "select_with_grant"]
+)
+def test_expand_action_shorthand_rejects_raw_action_names(raw_action):
+    """Raw SQL action names are no longer accepted anywhere in the spec format."""
+    with pytest.raises(UnsupportedPrivilegeError):
+        expand_action_shorthand(raw_action, DatabaseObjectType.TABLE)
+
+
+def test_specification_from_yaml_rejects_raw_action_names():
+    """Specification.from_yaml rejects a raw action name with a clear error."""
+    yml_str = """
+    users:
+        - name: alice
+          is_superuser: false
+          privileges:
+              table:
+                  select:
+                      - some_table
+    """
+    with pytest.raises(UnsupportedPrivilegeError, match="select"):
+        Specification.from_yaml(yml_str)
+
+
+def test_specification_from_yaml_rejects_database_write():
+    """A spec cannot express `database: write:` -- it must be rejected."""
+    yml_str = """
+    users:
+        - name: alice
+          is_superuser: false
+          privileges:
+              database:
+                  write:
+                      - some_db
+    """
+    with pytest.raises(UnsupportedPrivilegeError):
+        Specification.from_yaml(yml_str)
+
+
+@pytest.mark.parametrize("object_type_name", ["function", "procedure", "language"])
+def test_specification_from_yaml_rejects_unsupported_object_types(object_type_name):
+    """FUNCTION/PROCEDURE/LANGUAGE privileges are rejected, not silently dropped."""
+    yml_str = f"""
+    users:
+        - name: alice
+          is_superuser: false
+          privileges:
+              {object_type_name}:
+                  read:
+                      - some_object
+    """
+    with pytest.raises(UnsupportedPrivilegeError):
+        Specification.from_yaml(yml_str)
 
 
 def test_group_serialize_to_dict(spec_file):
@@ -293,7 +426,7 @@ def test_specification_serialize_to_dict():
     user = User(
         name="test_user_1",
         is_superuser=False,
-        member_of={"a_user_group_1", "test_group_1"},
+        groups={"a_user_group_1", "test_group_1"},
         privileges=Privileges([priv_1, priv_2]),
     )
 
@@ -304,7 +437,7 @@ def test_specification_serialize_to_dict():
             {
                 "name": "test_user_1",
                 "is_superuser": False,
-                "member_of": {"a_user_group_1", "test_group_1"},
+                "groups": {"a_user_group_1", "test_group_1"},
                 "privileges": {
                     "table": {
                         "select": [
@@ -334,6 +467,7 @@ def test_specification_serialize_to_dict():
                 },
             },
         ],
+        "roles": [],
     }
 
     result = specification.to_dict()
@@ -522,19 +656,19 @@ def test_specification_from_redshift_connector_user_memberships():
     spec = Specification.from_redshift_connector(connector)
 
     for user in spec.users:
-        assert user.member_of is not None and len(user.member_of) >= 1
-        assert "everyone" in user.member_of, f"{user} is not part of 'everyone' group"
+        assert user.groups is not None and len(user.groups) >= 1
+        assert "everyone" in user.groups, f"{user} is not part of 'everyone' group"
 
         if user.name == "prod_admin":
-            assert len(user.member_of) == 1
+            assert len(user.groups) == 1
 
         elif user.name == "prod_analyst":
-            assert len(user.member_of) == 2
-            assert "prod_analytics" in user.member_of
+            assert len(user.groups) == 2
+            assert "prod_analytics" in user.groups
 
         elif user.name == "dev_analyst":
-            assert len(user.member_of) == 2
-            assert "consumer_analytics" in user.member_of
+            assert len(user.groups) == 2
+            assert "consumer_analytics" in user.groups
 
     assert len(spec.groups) == 3
 
@@ -955,7 +1089,7 @@ def test_specification_roundtrip_json():
 
 def test_specification_validate_user_in_missing_group():
     """validate fails when a user references a group not declared in the spec."""
-    user = User(name="alice", is_superuser=False, member_of={"ghost_group"})
+    user = User(name="alice", is_superuser=False, groups={"ghost_group"})
     spec = Specification(users=[user], groups=[])
     success, failures = spec.validate()
     assert success is False
@@ -1029,7 +1163,7 @@ def test_check_users_belong_to_existing_groups_non_existent_group():
     user = User(
         name="test_user_1",
         is_superuser=False,
-        member_of={"existing_group", "non_existent_group"},
+        groups={"existing_group", "non_existent_group"},
     )
 
     specification = Specification(users=[user], groups=[group])
@@ -1211,3 +1345,139 @@ def test_validate_require_owner_checks_group_privileges():
         getattr(failure.subject, "name", None) == "db.public.sales"
         for failure in failures
     )
+
+
+def test_role_serialize_to_dict():
+    """A Role serialises the same way as a Group, using read/write shorthand."""
+    priv = Privilege(
+        database_object=DatabaseObject(name="orders", type=DatabaseObjectType.TABLE),
+        action=Action.SELECT,
+    )
+    role = Role(
+        name="analytics_role",
+        member_of={"reporting_role"},
+        privileges=Privileges([priv]),
+    )
+    expected = {
+        "name": "analytics_role",
+        "member_of": {"reporting_role"},
+        "privileges": {
+            "table": {
+                "select": ["orders"],
+            },
+        },
+    }
+    assert role.to_dict() == expected
+
+
+def test_role_deserialize_from_dict():
+    """Role.privileges expand using the same read/write shorthand as User/Group."""
+    priv = Privilege(
+        database_object=DatabaseObject(name="orders", type=DatabaseObjectType.TABLE),
+        action=Action.SELECT,
+    )
+    expected = Role(
+        name="analytics_role",
+        member_of={"reporting_role"},
+        privileges=Privileges([priv]),
+    )
+    role_dict = {
+        "name": "analytics_role",
+        "member_of": {"reporting_role"},
+        "privileges": {
+            "table": {
+                "read": ["orders"],
+            },
+        },
+    }
+    assert Role.from_dict(role_dict) == expected
+
+
+def test_role_validate_rejects_malicious_name():
+    """Role.validate rejects a name that isn't a safe SQL identifier."""
+    role = Role(name="bad; DROP TABLE users;--")
+    success, failures = role.validate()
+    assert success is False
+    assert failures is not None and len(failures) == 1
+
+
+def test_role_add_privilege_creates_set():
+    """add_privilege lazily creates the Privileges set on a Role."""
+    role = Role(name="analytics_role")
+    priv = Privilege(
+        database_object=DatabaseObject(name="orders", type=DatabaseObjectType.TABLE),
+        action=Action.SELECT,
+    )
+    role.add_privilege(priv)
+    assert role.privileges == Privileges([priv])
+
+
+def test_specification_roles_default_to_empty_list():
+    """Specification.roles defaults to [] rather than None."""
+    spec = Specification(users=[], groups=[])
+    assert spec.roles == []
+
+
+def test_specification_validate_passes_with_roles_and_role_membership():
+    """validate passes for roles, role-to-role membership, and users with roles."""
+    reporting_role = Role(name="reporting_role")
+    analytics_role = Role(name="analytics_role", member_of={"reporting_role"})
+    user = User(name="alice", is_superuser=False, roles={"analytics_role"})
+
+    spec = Specification(
+        users=[user], groups=[], roles=[reporting_role, analytics_role]
+    )
+
+    success, failures = spec.validate()
+
+    assert success is True
+    assert failures is None
+
+
+def test_specification_validate_fails_user_references_undeclared_role():
+    """validate fails when a user references a role not declared in roles:."""
+    user = User(name="alice", is_superuser=False, roles={"ghost_role"})
+    spec = Specification(users=[user], groups=[], roles=[])
+
+    success, failures = spec.validate()
+
+    assert success is False
+    assert failures is not None and len(failures) >= 1
+    assert any("ghost_role" in failure.message for failure in failures)
+
+
+def test_specification_validate_fails_role_references_undeclared_role():
+    """validate fails when a role's member_of references an undeclared role."""
+    role = Role(name="analytics_role", member_of={"ghost_role"})
+    spec = Specification(users=[], groups=[], roles=[role])
+
+    success, failures = spec.validate()
+
+    assert success is False
+    assert failures is not None and len(failures) >= 1
+    assert any("ghost_role" in failure.message for failure in failures)
+
+
+def test_specification_roundtrip_yaml_with_roles():
+    """spec -> to_yaml() -> from_yaml() preserves all role data.
+
+    Privileges are deliberately left off the roles here: to_dict() emits raw
+    action names (e.g. `select`) while the deserializer only accepts
+    read/write shorthand, so a spec with privileges does not currently
+    round-trip for User/Group either -- that is a pre-existing asymmetry
+    unrelated to role round-tripping.
+    """
+    reporting_role = Role(name="reporting_role")
+    analytics_role = Role(name="analytics_role", member_of={"reporting_role"})
+    user = User(name="alice", is_superuser=False, roles={"analytics_role"})
+
+    spec = Specification(
+        users=[user], groups=[], roles=[reporting_role, analytics_role]
+    )
+    restored = Specification.from_yaml(spec.to_yaml())
+
+    assert len(restored.roles) == 2
+    restored_roles = {role.name: role for role in restored.roles}
+    assert restored_roles["reporting_role"].member_of is None
+    assert restored_roles["analytics_role"].member_of == {"reporting_role"}
+    assert restored.users[0].roles == {"analytics_role"}

@@ -26,9 +26,12 @@ from .models import (
     Ownerships,
     Privilege,
     Privileges,
+    Role,
     Specification,
+    UnsupportedPrivilegeError,
     User,
     ValidationFailure,
+    expand_action_shorthand,
 )
 
 # Explicit re-export so the model names are importable from
@@ -42,9 +45,12 @@ __all__ = [
     "Ownerships",
     "Privilege",
     "Privileges",
+    "Role",
     "Specification",
+    "UnsupportedPrivilegeError",
     "User",
     "ValidationFailure",
+    "expand_action_shorthand",
 ]
 
 
@@ -145,25 +151,27 @@ def filter_none(attr, value) -> bool:
     return value is not None and attr.name not in _INTERNAL_FIELDS
 
 
-@add_method([Specification, User, Group])
+@add_method([Specification, User, Group, Role])
 def to_dict[T](self: T) -> dict[str, Any]:
     """Serialize self to dictionary using attrs.asdict"""
     return asdict(self, filter=filter_none, value_serializer=value_serializer)
 
 
-@add_method([Specification, User, Group])
+@add_method([Specification, User, Group, Role])
 def to_yaml[T](self: T) -> str:
     """Dump to YAML string after serializing to dictionary."""
     return yaml.safe_dump(self.to_dict())
 
 
-@add_method([Specification, User, Group])
+@add_method([Specification, User, Group, Role])
 def to_json[T](self: T) -> str:
     """Dump to JSON string after serializing to dictionary."""
     return json.dumps(self.to_dict())
 
 
-_converter = cattrs.GenConverter(prefer_attrib_converters=True)
+_converter = cattrs.GenConverter(
+    prefer_attrib_converters=True, detailed_validation=False
+)
 
 _converter.register_structure_hook(
     DatabaseObject,
@@ -176,19 +184,24 @@ _converter.register_structure_hook(
 
 
 def _deserialize_privileges(d: dict[str, Any], *args, **kwargs) -> Privileges:
+    """Deserialize a spec's ``privileges`` block.
+
+    ``read``/``write`` shorthand is the only privilege syntax a spec accepts;
+    it is expanded into concrete Actions here and not retained anywhere on
+    the resulting model.
+    """
     flat_privileges = Privileges()
 
-    for db_obj_type, v in d.items():
-        for action, db_objs in v.items():
-            action = Action[action.upper()]
+    for db_obj_type, shorthand_map in d.items():
+        object_type = DatabaseObjectType(db_obj_type.upper())
+        for shorthand, db_objs in shorthand_map.items():
+            actions = expand_action_shorthand(shorthand, object_type)
             for db_obj in db_objs:
-                database_object = DatabaseObject(
-                    type=DatabaseObjectType(db_obj_type.upper()),
-                    name=db_obj,
-                )
-                flat_privileges.add(
-                    Privilege(database_object=database_object, action=action)
-                )
+                database_object = DatabaseObject(type=object_type, name=db_obj)
+                for action in actions:
+                    flat_privileges.add(
+                        Privilege(database_object=database_object, action=action)
+                    )
 
     return flat_privileges
 
@@ -229,6 +242,14 @@ _converter.register_unstructure_hook(
     ),
 )
 _converter.register_unstructure_hook(
+    Role,
+    cattrs.gen.make_dict_unstructure_fn(
+        Role,
+        _converter,
+        _cattrs_omit_if_default=True,
+    ),
+)
+_converter.register_unstructure_hook(
     Specification,
     cattrs.gen.make_dict_unstructure_fn(
         Specification,
@@ -238,20 +259,24 @@ _converter.register_unstructure_hook(
     ),
 )
 
+_converter.register_structure_hook(
+    User, cattrs.gen.make_dict_structure_fn(User, _converter)
+)
 
-@add_method([Specification, User, Group], mod=classmethod)
+
+@add_method([Specification, User, Group, Role], mod=classmethod)
 def from_dict[T](cls: T, d: dict[str, Any]) -> T:
     """Initialize a class from a Dictionary."""
     return _converter.structure(d, cls)
 
 
-@add_method([Specification, User, Group], mod=classmethod)
+@add_method([Specification, User, Group, Role], mod=classmethod)
 def from_yaml[T](cls: T, s: str) -> T:
     """Initialize a class by loading a YAML string."""
     return cls.from_dict(yaml.safe_load(s))
 
 
-@add_method([Specification, User, Group], mod=classmethod)
+@add_method([Specification, User, Group, Role], mod=classmethod)
 def from_json[T](cls: T, s: str):
     """Initialize a class by loading a JSON string."""
     return cls.from_dict(json.loads(s))

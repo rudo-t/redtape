@@ -12,23 +12,23 @@ def spec_file(tmp_path_factory):
                 {
                     "name": "test_user_1",
                     "is_superuser": True,
-                    "member_of": ["my_user_group_1", "my_user_group_2"],
+                    "groups": ["my_user_group_1", "my_user_group_2"],
                     "privileges": {
                         "table": {
-                            "select": [
+                            "read": [
                                 "one_table",
                                 "another_table",
                                 "database_name.*.*",
                             ],
                         },
                         "schema": {
-                            "create": [
+                            "write": [
                                 "a_schema",
                                 "database_name.*",
                             ]
                         },
                         "database": {
-                            "temporary": ["my_db"],
+                            "read": ["my_db"],
                         },
                     },
                 }

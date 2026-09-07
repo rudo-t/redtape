@@ -22,7 +22,7 @@ def valid_spec_file(tmp_path):
                     {
                         "name": "alice",
                         "is_superuser": False,
-                        "member_of": ["analysts"],
+                        "groups": ["analysts"],
                     }
                 ],
                 "groups": [{"name": "analysts"}],
@@ -54,7 +54,7 @@ def test_validate_invalid_spec(tmp_path):
                     {
                         "name": "alice",
                         "is_superuser": False,
-                        "member_of": ["ghost_group"],
+                        "groups": ["ghost_group"],
                     }
                 ],
                 "groups": [],
@@ -82,7 +82,7 @@ def test_validate_json_on_invalid_spec(tmp_path):
                     {
                         "name": "bob",
                         "is_superuser": False,
-                        "member_of": ["missing_group"],
+                        "groups": ["missing_group"],
                     }
                 ],
                 "groups": [],
@@ -90,4 +90,58 @@ def test_validate_json_on_invalid_spec(tmp_path):
         )
     )
     result = runner.invoke(app, ["validate", "--json", str(spec_path)])
+    assert result.exit_code == 1
+
+
+def test_validate_valid_spec_with_roles(tmp_path):
+    """validate exits 0 on a spec with roles, role-to-role membership, and
+    users with roles:."""
+    spec_path = tmp_path / "valid_roles.yml"
+    spec_path.write_text(
+        yaml.safe_dump(
+            {
+                "users": [
+                    {
+                        "name": "alice",
+                        "is_superuser": False,
+                        "roles": ["analytics_role"],
+                    }
+                ],
+                "groups": [],
+                "roles": [
+                    {"name": "reporting_role"},
+                    {
+                        "name": "analytics_role",
+                        "member_of": ["reporting_role"],
+                        "privileges": {
+                            "table": {"read": ["orders"]},
+                        },
+                    },
+                ],
+            }
+        )
+    )
+    result = runner.invoke(app, ["validate", str(spec_path)])
+    assert result.exit_code == 0
+
+
+def test_validate_fails_user_references_undeclared_role(tmp_path):
+    """validate exits 1 when a user references a role not declared in roles:."""
+    spec_path = tmp_path / "invalid_roles.yml"
+    spec_path.write_text(
+        yaml.safe_dump(
+            {
+                "users": [
+                    {
+                        "name": "alice",
+                        "is_superuser": False,
+                        "roles": ["ghost_role"],
+                    }
+                ],
+                "groups": [],
+                "roles": [],
+            }
+        )
+    )
+    result = runner.invoke(app, ["validate", str(spec_path)])
     assert result.exit_code == 1

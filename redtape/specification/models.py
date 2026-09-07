@@ -58,6 +58,7 @@ class Action(Enum):
     TEMPORARY = "T"
     RULE = "R"
     TRIGGER = "t"
+    CONNECT = "c"
 
     SELECT_WITH_GRANT = "r*"
     INSERT_WITH_GRANT = "a*"
@@ -71,6 +72,7 @@ class Action(Enum):
     TEMPORARY_WITH_GRANT = "T*"
     RULE_WITH_GRANT = "R*"
     TRIGGER_WITH_GRANT = "t*"
+    CONNECT_WITH_GRANT = "c*"
 
 
 class DatabaseObjectType(Enum):
@@ -104,8 +106,10 @@ class DatabaseObjectType(Enum):
             supported = {
                 Action.CREATE,
                 Action.TEMPORARY,
+                Action.CONNECT,
                 Action.CREATE_WITH_GRANT,
                 Action.TEMPORARY_WITH_GRANT,
+                Action.CONNECT_WITH_GRANT,
             }
         elif self is DatabaseObjectType.SCHEMA:
             supported = {
@@ -125,6 +129,83 @@ class DatabaseObjectType(Enum):
                 Action.USAGE_WITH_GRANT,
             }
         return supported
+
+
+class UnsupportedPrivilegeError(ValueError):
+    """A spec references a privilege that read/write shorthand cannot express."""
+
+
+_READ = "read"
+_WRITE = "write"
+
+# `read`/`write` is the only privilege syntax a redtape spec accepts, for
+# users and groups today and future object types alike. Kept as a plain
+# str-keyed table -- rather than baked into the YAML loader -- so that
+# future model can reuse expand_action_shorthand() without a second
+# parser. A missing (shorthand, object_type) entry means that combination is
+# not expressible in a spec (e.g. `write` on DATABASE).
+_SHORTHAND_EXPANSION: dict[str, dict[DatabaseObjectType, frozenset[Action]]] = {
+    _READ: {
+        DatabaseObjectType.TABLE: frozenset({Action.SELECT}),
+        DatabaseObjectType.VIEW: frozenset({Action.SELECT}),
+        DatabaseObjectType.SCHEMA: frozenset({Action.USAGE}),
+        DatabaseObjectType.DATABASE: frozenset({Action.CONNECT}),
+    },
+    _WRITE: {
+        DatabaseObjectType.TABLE: frozenset(
+            {Action.SELECT, Action.INSERT, Action.UPDATE, Action.DELETE}
+        ),
+        DatabaseObjectType.SCHEMA: frozenset({Action.USAGE, Action.CREATE}),
+    },
+}
+
+# FUNCTION/PROCEDURE/LANGUAGE have no read/write mapping at all: they're
+# called out separately from a missing (shorthand, object_type) entry so the
+# error message can say so plainly, rather than complaining about one
+# specific shorthand at a time.
+_OBJECT_TYPES_WITHOUT_SHORTHAND = frozenset(
+    {
+        DatabaseObjectType.FUNCTION,
+        DatabaseObjectType.PROCEDURE,
+        DatabaseObjectType.LANGUAGE,
+    }
+)
+
+
+def expand_action_shorthand(
+    shorthand: str, object_type: DatabaseObjectType
+) -> frozenset[Action]:
+    """Expand a `read`/`write` privilege shorthand into concrete Actions.
+
+    Raises:
+        UnsupportedPrivilegeError: if `shorthand` is not `read`/`write` (e.g.
+            a raw action name like `select`), if `object_type` has no
+            read/write mapping at all (FUNCTION, PROCEDURE, LANGUAGE), or if
+            this shorthand has no mapping for this object type (e.g. `write`
+            on DATABASE).
+    """
+    normalized = shorthand.lower()
+
+    if normalized not in _SHORTHAND_EXPANSION:
+        raise UnsupportedPrivilegeError(
+            f"{shorthand!r} is not a supported privilege. Redtape specs only "
+            "accept 'read'/'write' shorthand for privileges; raw action "
+            "names (e.g. 'select', 'insert', 'drop') are no longer accepted."
+        )
+
+    if object_type in _OBJECT_TYPES_WITHOUT_SHORTHAND:
+        raise UnsupportedPrivilegeError(
+            f"{object_type.value} privileges have no read/write mapping and "
+            "can no longer be expressed in a redtape spec."
+        )
+
+    try:
+        return _SHORTHAND_EXPANSION[normalized][object_type]
+    except KeyError:
+        raise UnsupportedPrivilegeError(
+            f"{normalized!r} has no privilege mapping for {object_type.value} "
+            "and cannot be expressed in a redtape spec."
+        ) from None
 
 
 @attrs.frozen(hash=True, slots=True)
@@ -269,7 +350,7 @@ class Operation(Enum):
 
 @attrs.frozen(hash=True)
 class ValidationFailure:
-    subject: DatabaseObject | User | Group
+    subject: DatabaseObject | User | Group | Role
     message: str
 
 
@@ -336,19 +417,86 @@ class Group:
 
 
 @attrs.define(slots=True)
+class Role:
+    """A Redshift RBAC Role, which may itself be a member of other Roles.
+
+    Attributes:
+        name (str): The role name.
+        member_of (list[str]): A list of role names this role is a member of
+            (role-to-role inheritance).
+        privileges (Privileges): A set of Privileges associated with this role.
+    """
+
+    name: str
+    member_of: set[str] | None = None
+    privileges: Privileges | None = None
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, str):
+            return self.name == other
+        elif isinstance(other, Role):
+            return (self.name, self.member_of, self.privileges) == (
+                other.name,
+                other.member_of,
+                other.privileges,
+            )
+        else:
+            return NotImplemented
+
+    def __repr__(self):
+        return (
+            f"Role(name={self.name}, member_of={self.member_of}, "
+            f"privileges={self.privileges})"
+        )
+
+    def add_privilege(self, privilege: Privilege):
+        try:
+            self.privileges.add(privilege)
+        except AttributeError:
+            self.privileges = Privileges((privilege,))
+
+    def validate(self) -> tuple[bool, list[ValidationFailure] | None]:
+        validation_failures: list[ValidationFailure] = []
+        success = True
+
+        if not is_valid_identifier_name(self.name):
+            validation_failures.append(
+                ValidationFailure(
+                    subject=self,
+                    message=f"{self.name!r} is not a valid Redshift identifier.",
+                )
+            )
+            success = False
+
+        if self.privileges is not None:
+            for privilege in self.privileges:
+                _, failures = privilege.validate()
+
+                if failures is not None:
+                    validation_failures.extend(failures)
+                    success = False
+
+        if success is True:
+            return success, None
+        return success, validation_failures
+
+
+@attrs.define(slots=True)
 class User:
     """A User in a database who can be a subject of privileges.
 
     Attributes:
         name (str): The user name.
         is_superuser (bool): Whether the user is a superuser or not.
-        member_of (list[str]): A list of group names the user is a member of.
+        groups (list[str]): A list of group names the user is a member of.
+        roles (list[str]): A list of role names the user is a member of.
         privileges (Privileges): A set of Privileges associated with this user.
     """
 
     name: str
     is_superuser: bool
-    member_of: set[str] | None = None
+    groups: set[str] | None = None
+    roles: set[str] | None = None
     privileges: Privileges | None = None
     owns: Ownerships | None = None
 
@@ -360,12 +508,14 @@ class User:
                 self.name,
                 self.privileges,
                 self.is_superuser,
-                self.member_of,
+                self.groups,
+                self.roles,
             ) == (
                 other.name,
                 other.privileges,
                 other.is_superuser,
-                other.member_of,
+                other.groups,
+                other.roles,
             )
         else:
             return NotImplemented
@@ -428,6 +578,7 @@ class User:
 class Specification:
     users: list[User] | None = None
     groups: list[Group] | None = None
+    roles: list[Role] | None = None
     schema_names: dict = attrs.field(factory=dict, eq=False, hash=False)
 
     def __attrs_post_init__(self):
@@ -435,6 +586,8 @@ class Specification:
             self.users = []
         if self.groups is None:
             self.groups = []
+        if self.roles is None:
+            self.roles = []
 
     @classmethod
     def from_redshift_connector(cls, connector: RedshiftConnector) -> Specification:
@@ -521,7 +674,7 @@ class Specification:
                 is_superuser=False,
                 privileges=public_privileges,
                 owns=None,
-                member_of=None,
+                groups=None,
             )
             users.append(public_user)
 
@@ -553,7 +706,7 @@ class Specification:
                 is_superuser=user_row.usesuper,
                 privileges=None,
                 owns=None,
-                member_of=group_members.get(user_row.usesysid),
+                groups=group_members.get(user_row.usesysid),
             )
             users.append(user)
 
@@ -571,7 +724,7 @@ class Specification:
             return
 
         for group in self.groups:
-            users = [user for user in self.users if group.name in user.member_of]
+            users = [user for user in self.users if group.name in user.groups]
             yield group, users
 
     def user_to_groups(self) -> Iterator[tuple[User, list[Group]]]:
@@ -579,15 +732,13 @@ class Specification:
             return
 
         for user in self.users:
-            if user.member_of is None or len(user.member_of) == 0:
+            if user.groups is None or len(user.groups) == 0:
                 continue
 
             if self.groups is None:
                 groups = []
             else:
-                groups = [
-                    group for group in self.groups if group.name in user.member_of
-                ]
+                groups = [group for group in self.groups if group.name in user.groups]
             yield user, groups
 
     def validate(
@@ -610,6 +761,14 @@ class Specification:
         if failures is None:
             failures = []
 
+        _, role_reference_failures = self.check_users_belong_to_existing_roles()
+        if role_reference_failures is not None:
+            failures.extend(role_reference_failures)
+
+        _, role_membership_failures = self.check_roles_belong_to_existing_roles()
+        if role_membership_failures is not None:
+            failures.extend(role_membership_failures)
+
         for user in self.users:
             _, user_failures = user.validate()
             if user_failures is not None:
@@ -625,6 +784,14 @@ class Specification:
                     failures.extend(group_failures)
                 except AttributeError:
                     failures = group_failures
+
+        for role in self.roles:
+            _, role_failures = role.validate()
+            if role_failures is not None:
+                try:
+                    failures.extend(role_failures)
+                except AttributeError:
+                    failures = role_failures
 
         if require_owner is True:
             _, owner_failures = self.check_objects_have_owners()
@@ -697,22 +864,80 @@ class Specification:
         success = True
         failures = None
         for user, groups in self.user_to_groups():
-            # len mismatches would mean a group appears in member_of
+            # len mismatches would mean a group appears in groups
             # but not in self.groups. The inverse could also be true,
             # but we are not looking to validate that as we don't know
             # which groups should a user belong to.
-            if len(groups) == len(user.member_of):
+            if len(groups) == len(user.groups):
                 continue
 
             non_existing_groups = [
                 group
-                for group in user.member_of
+                for group in user.groups
                 if group not in [group.name for group in groups]
             ]
 
             failure = ValidationFailure(
                 subject=user,
                 message=f"User is member of non declared groups: {non_existing_groups}",
+            )
+            success = False
+            try:
+                failures.append(failure)
+            except AttributeError:
+                failures = [failure]
+
+        return success, failures
+
+    def check_users_belong_to_existing_roles(
+        self,
+    ) -> tuple[bool, list[ValidationFailure] | None]:
+        """Check Users only reference Roles declared in this Specification."""
+        success = True
+        failures = None
+        role_names = {role.name for role in self.roles}
+
+        for user in self.users:
+            if user.roles is None or len(user.roles) == 0:
+                continue
+
+            non_existing_roles = [role for role in user.roles if role not in role_names]
+            if len(non_existing_roles) == 0:
+                continue
+
+            failure = ValidationFailure(
+                subject=user,
+                message=f"User is member of non declared roles: {non_existing_roles}",
+            )
+            success = False
+            try:
+                failures.append(failure)
+            except AttributeError:
+                failures = [failure]
+
+        return success, failures
+
+    def check_roles_belong_to_existing_roles(
+        self,
+    ) -> tuple[bool, list[ValidationFailure] | None]:
+        """Check Roles' ``member_of`` only reference Roles declared in this Specification."""
+        success = True
+        failures = None
+        role_names = {role.name for role in self.roles}
+
+        for role in self.roles:
+            if role.member_of is None or len(role.member_of) == 0:
+                continue
+
+            non_existing_roles = [
+                member for member in role.member_of if member not in role_names
+            ]
+            if len(non_existing_roles) == 0:
+                continue
+
+            failure = ValidationFailure(
+                subject=role,
+                message=f"Role is member of non declared roles: {non_existing_roles}",
             )
             success = False
             try:

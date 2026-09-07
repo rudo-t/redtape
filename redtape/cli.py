@@ -24,6 +24,7 @@ from redtape.specification import (
     Group,
     Operation,
     Specification,
+    UnsupportedPrivilegeError,
     User,
     ValidationFailure,
 )
@@ -296,6 +297,9 @@ def load_spec(
         console_print(
             f"[bold red]Specification file does not exist {spec_source}", quiet
         )
+        raise typer.Exit(code=1) from None
+    except UnsupportedPrivilegeError as e:
+        console_print(f"[bold red]Invalid specification file: {e}", quiet)
         raise typer.Exit(code=1) from None
     except ValueError:
         console_print("[bold red]Invalid specification file", quiet)
