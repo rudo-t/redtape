@@ -802,6 +802,38 @@ def test_specification_from_redshift_connector_user_privileges():
             assert user.privileges == Privileges(should_have)
 
 
+def test_specification_from_redshift_connector_ignores_unrecognized_acl_codes():
+    """Table ACLs with privilege codes redtape doesn't know (e.g. Redshift
+    extensions like "P" or "A") must be skipped, not crash the export, the
+    same way TRIGGER/RULE are already skipped."""
+
+    class ConnectorWithUnknownAclCode(FakeRedshiftConnector):
+        def iter_tables(self):
+            yield db.Table(
+                database_name="prod",
+                schema_name="public",
+                table_name="weird_acl_table",
+                table_owner="prod_admin",
+                table_type="TABLE",
+                table_acl="prod_admin=arwdRxtDPA/prod_admin",
+                remarks=None,
+            )
+
+        def iter_schemas(self):
+            return iter(())
+
+    connector = ConnectorWithUnknownAclCode()
+    spec = Specification.from_redshift_connector(connector)
+
+    admin = next(user for user in spec.users if user.name == "prod_admin")
+    recognized_actions = {
+        priv.action
+        for priv in admin.privileges
+        if priv.database_object.name == "prod.public.weird_acl_table"
+    }
+    assert recognized_actions == {Action(c) for c in "arwdxD"}
+
+
 def test_specification_from_redshift_connector_groups_created():
     """Test loading an specification from a RedshiftConnector."""
     connector = FakeRedshiftConnector()

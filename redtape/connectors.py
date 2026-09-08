@@ -44,7 +44,7 @@ WHERE
   AND pns.nspname <> 'catalog_history'::name
   AND pns.nspname <> 'pg_toast'::name
   AND pns.nspname <> 'pg_internal'::name
-) u ON t.tablename::TEXT = u.table_name::TEXT
+) u ON t.tablename::TEXT = u.table_name::TEXT AND t.schemaname::TEXT = u.schema_name::TEXT
 """
 
 REDSHIFT_SCHEMAS_QUERY = """
@@ -94,7 +94,8 @@ FROM
     schema_owner integer,
     schema_type varchar,
     schema_acl varchar,
-    schema_option varchar
+    schema_option varchar,
+    schema_id integer
   )
 UNION ALL
 SELECT
@@ -607,8 +608,18 @@ class RedshiftConnector(DatabaseConnector):
 
         query = REDSHIFT_TABLES_QUERY
 
+        # mv_tbl__<name>__<n> tables are Redshift's auto-generated backing
+        # storage for materialized views (see SVV_MV_INFO), not real
+        # user-grantable tables — and current_user typically lacks
+        # has_table_privilege on them, which is why they'd otherwise show up
+        # with every u.* column NULL (including table_type).
+        query += "WHERE t.tablename !~ '^mv_tbl__' "
+
         if ignore_system is True:
-            query += "WHERE t.schemaname NOT IN ('information_schema', 'pg_catalog')"
+            query += (
+                "AND t.schemaname NOT IN "
+                "('information_schema', 'pg_catalog', 'pg_internal')"
+            )
 
         for database in self.iter_databases():
             new_connector = RedshiftConnector(

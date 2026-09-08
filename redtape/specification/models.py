@@ -645,7 +645,12 @@ class Specification:
             users[user_idx[owner]].add_owned_db_object(db_obj)
 
             for holder_name, holder_type, action in entity.iter_acl():
-                action = Action(action)
+                try:
+                    action = Action(action)
+                except ValueError:
+                    # Unrecognized ACL privilege code (e.g. Redshift-specific
+                    # extensions not in the Action enum). Skip rather than crash.
+                    continue
 
                 if action in (Action.TRIGGER, Action.RULE):
                     # These are not really used by Redshift.
