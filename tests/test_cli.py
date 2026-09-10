@@ -72,6 +72,58 @@ def test_validate_quiet_suppresses_output(valid_spec_file):
     assert result.output.strip() == ""
 
 
+def test_validate_quiet_unsupported_privilege_still_prints_error():
+    """--quiet still surfaces the load-time error for an unsupported privilege
+    shorthand (a spec that raises UnsupportedPrivilegeError while loading)."""
+    spec_yaml = yaml.safe_dump(
+        {
+            "groups": [
+                {
+                    "name": "g1",
+                    "privileges": {"table": {"select": ["orders"]}},
+                }
+            ],
+        }
+    )
+    result = runner.invoke(app, ["validate", "--quiet"], input=spec_yaml)
+    assert result.exit_code == 1
+    assert result.output.strip() != ""
+    assert "Invalid specification file" in result.output
+
+
+def test_validate_quiet_file_not_found_still_prints_error():
+    """--quiet still surfaces the error when the spec file doesn't exist."""
+    result = runner.invoke(
+        app, ["validate", "--quiet", "/nonexistent/path/redtape.yml"]
+    )
+    assert result.exit_code == 1
+    assert result.output.strip() != ""
+    assert "does not exist" in result.output
+
+
+def test_validate_quiet_invalid_spec_still_prints_errors(tmp_path):
+    """--quiet still surfaces validation failures, just not progress messages."""
+    spec_path = tmp_path / "invalid.yml"
+    spec_path.write_text(
+        yaml.safe_dump(
+            {
+                "users": [
+                    {
+                        "name": "alice",
+                        "is_superuser": False,
+                        "groups": ["ghost_group"],
+                    }
+                ],
+                "groups": [],
+            }
+        )
+    )
+    result = runner.invoke(app, ["validate", "--quiet", str(spec_path)])
+    assert result.exit_code == 1
+    assert result.output.strip() != ""
+    assert "Specification loaded!" not in result.output
+
+
 def test_validate_json_on_invalid_spec(tmp_path):
     """--json outputs a JSON error structure on an invalid spec."""
     spec_path = tmp_path / "invalid.yml"

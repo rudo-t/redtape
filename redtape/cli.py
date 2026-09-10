@@ -35,9 +35,18 @@ console = Console()
 Printable = str | Table | Syntax
 
 
-def console_print(message: Printable, quiet: bool):
-    """Print a message if quiet is False."""
-    if not quiet:
+def console_print(message: Printable, quiet: bool, is_error: bool = False):
+    """Print a message if quiet is False.
+
+    Args:
+        message: The message to print.
+        quiet: Suppress the message when True, unless is_error is also True.
+        is_error: When True, always print regardless of quiet. Use this for
+            messages that explain a failure (per --quiet's documented
+            behavior of still surfacing errors), not for informational
+            progress messages.
+    """
+    if not quiet or is_error:
         console.print(message)
 
 
@@ -202,7 +211,7 @@ def run(
     total_queries = len([q for q in admin.queries()])
 
     if total_queries == 0:
-        console_print("[bold red]There is nothing to do!", quiet)
+        console_print("[bold red]There is nothing to do!", quiet, is_error=True)
         raise typer.Exit(code=1)
 
     main_progress = Progress(console=console)
@@ -295,17 +304,23 @@ def load_spec(
 
     except FileNotFoundError:
         console_print(
-            f"[bold red]Specification file does not exist {spec_source}", quiet
+            f"[bold red]Specification file does not exist {spec_source}",
+            quiet,
+            is_error=True,
         )
         raise typer.Exit(code=1) from None
     except UnsupportedPrivilegeError as e:
-        console_print(f"[bold red]Invalid specification file: {e}", quiet)
+        console_print(
+            f"[bold red]Invalid specification file: {e}", quiet, is_error=True
+        )
         raise typer.Exit(code=1) from None
     except ValueError:
-        console_print("[bold red]Invalid specification file", quiet)
+        console_print("[bold red]Invalid specification file", quiet, is_error=True)
         raise typer.Exit(code=1) from None
     except ConnectionError:
-        console_print("[bold red]Failed to connect to Redshift Database", quiet)
+        console_print(
+            "[bold red]Failed to connect to Redshift Database", quiet, is_error=True
+        )
         raise typer.Exit(code=1) from None
 
     return spec
@@ -321,7 +336,9 @@ def validate_spec(
         console_print("Validation successful!", quiet)
         return True, None
 
-    console_print(f"Validation encountered {len(failures)} errors!", quiet)
+    console_print(
+        f"Validation encountered {len(failures)} errors!", quiet, is_error=True
+    )
 
     if json is True:
         results = {
