@@ -17,3 +17,4 @@ build_drop_query = None
 build_grant_query = None
 build_group_queries = None
 build_ownership_query = None
+build_revoke_query = None

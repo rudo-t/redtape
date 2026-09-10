@@ -194,6 +194,55 @@ def test_user_management_operation_grant_without_privilege_raises_typeerror(user
         op.build_query()
 
 
+def test_user_management_operation_revoke(user, select_privilege, create_privilege):
+    """Test the build_query method for a revoke operation."""
+    op = UserManagementOperation(
+        operation=Operation.REVOKE,
+        subject=user,
+        privilege=select_privilege,
+    )
+
+    result = op.build_query()
+    expected = 'REVOKE SELECT ON TABLE "one_table" FROM "test_user_1";'
+
+    assert result == expected
+
+
+def test_user_management_operation_revoke_with_wildcard(user):
+    """Test the build_query method for revoke operation with a wildcard."""
+    priv = Privilege(
+        database_object=DatabaseObject(
+            name="my_db.my_schema.*", type=DatabaseObjectType.TABLE
+        ),
+        action=Action.SELECT,
+    )
+
+    op = UserManagementOperation(
+        operation=Operation.REVOKE,
+        subject=user,
+        privilege=priv,
+    )
+
+    result = op.build_query()
+    expected = (
+        'REVOKE SELECT ON ALL TABLES IN SCHEMA "my_db"."my_schema" FROM "test_user_1";'
+    )
+
+    assert result == expected
+
+
+def test_user_management_operation_revoke_without_privilege_raises_typeerror(user):
+    """REVOKE with privilege=None should raise TypeError, not NameError."""
+    op = UserManagementOperation(
+        operation=Operation.REVOKE,
+        subject=user,
+        privilege=None,
+    )
+
+    with pytest.raises(TypeError):
+        op.build_query()
+
+
 @pytest.mark.parametrize(
     ("object_type", "object_name", "expected"),
     [
@@ -375,6 +424,56 @@ def test_group_management_operation_grant_without_privilege_raises_typeerror(gro
     """GRANT with privilege=None should raise TypeError, not NameError."""
     op = GroupManagementOperation(
         operation=Operation.GRANT,
+        subject=group,
+        privilege=None,
+    )
+
+    with pytest.raises(TypeError):
+        op.build_query()
+
+
+def test_group_management_operation_revoke(group, select_privilege, create_privilege):
+    """Test the build_query method for a revoke operation."""
+    op = GroupManagementOperation(
+        operation=Operation.REVOKE,
+        subject=group,
+        privilege=select_privilege,
+    )
+
+    result = op.build_query()
+    expected = 'REVOKE SELECT ON TABLE "one_table" FROM "a_user_group_1";'
+
+    assert result == expected
+
+
+def test_group_management_operation_revoke_with_wildcard(group):
+    """Test the build_query method for revoke operation with a wildcard."""
+    priv = Privilege(
+        database_object=DatabaseObject(
+            name="my_db.my_schema.*", type=DatabaseObjectType.TABLE
+        ),
+        action=Action.SELECT,
+    )
+
+    op = GroupManagementOperation(
+        operation=Operation.REVOKE,
+        subject=group,
+        privilege=priv,
+    )
+
+    result = op.build_query()
+    expected = (
+        'REVOKE SELECT ON ALL TABLES IN SCHEMA "my_db"."my_schema" '
+        'FROM "a_user_group_1";'
+    )
+
+    assert result == expected
+
+
+def test_group_management_operation_revoke_without_privilege_raises_typeerror(group):
+    """REVOKE with privilege=None should raise TypeError, not NameError."""
+    op = GroupManagementOperation(
+        operation=Operation.REVOKE,
         subject=group,
         privilege=None,
     )
