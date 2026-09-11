@@ -60,23 +60,23 @@ class FakeRedshiftConnector(db.RedshiftConnector):
         """No-op replacement for the real, network-touching `connect()`."""
         yield self
 
-    def iter_users(self) -> Iterable[db.User]:
+    def iter_users(self, ignore_admin: bool = False) -> Iterator[db.User]:
         """Iterate over the configured fake users."""
         yield from self._users
 
-    def iter_groups(self) -> Iterable[db.Group]:
+    def iter_groups(self) -> Iterator[db.Group]:
         """Iterate over the configured fake groups."""
         yield from self._groups
 
-    def iter_tables(self) -> Iterable[db.Table]:
+    def iter_tables(self, ignore_system: bool = True) -> Iterator[db.Table]:
         """Iterate over the configured fake tables."""
         yield from self._tables
 
-    def iter_schemas(self) -> Iterable[db.Schema]:
+    def iter_schemas(self, ignore_system: bool = True) -> Iterator[db.Schema]:
         """Iterate over the configured fake schemas."""
         yield from self._schemas
 
-    def iter_databases(self) -> Iterable[db.Database]:
+    def iter_databases(self, ignore_admin: bool = True) -> Iterator[db.Database]:
         """Iterate over the configured fake databases."""
         yield from self._databases
 
