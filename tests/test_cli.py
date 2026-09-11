@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from contextlib import contextmanager
+
 import pytest
 import yaml
 from typer.testing import CliRunner
@@ -9,6 +12,7 @@ from typer.testing import CliRunner
 import redtape.connectors as db
 from redtape.cli import app
 from redtape.connectors import RedshiftConnector
+from redtape.specification import Specification
 
 runner = CliRunner()
 
@@ -330,3 +334,138 @@ def test_run_dry_no_changes_needed(
     result = runner.invoke(app, ["run", "--dry", str(spec_path)])
 
     assert result.exit_code == 0
+
+
+@pytest.fixture
+def export_connector(fake_connector_factory):
+    """A fake connector with a user, an unpopulated group, and a table the
+    user owns with several privileges, used to exercise `export`'s YAML/JSON
+    serialization paths.
+
+    Deliberately does not put the user in a group (`grolist=[]`): a
+    connector-derived `User.groups` is a plain `set`, and
+    `Specification.to_json` has no serializer registered for a bare `set`
+    (only for the `Privileges`/`Ownerships`/`Enum` types it explicitly
+    dispatches on) - `export --json` crashes with `TypeError: Object of type
+    set is not JSON serializable` whenever a user has any group membership.
+    That's a real, separate bug (filed as an issue, not fixed here per this
+    issue's out-of-scope: no production changes beyond what's needed for
+    connector fakeability) - this fixture sidesteps it so the YAML/JSON
+    equivalence tests below can exercise everything else `export` does
+    (users, groups, ownership, and privileges) without tripping over it.
+    """
+    return fake_connector_factory(
+        users=[
+            db.User(
+                usename="alice",
+                usesysid=1,
+                usecreatedb=False,
+                usesuper=False,
+                usecatupd=False,
+                valuntil=None,
+                useconfig=None,
+            ),
+        ],
+        groups=[
+            db.Group(groname="analysts", grosysid=2, grolist=[]),
+        ],
+        tables=[
+            db.Table(
+                database_name="prod",
+                schema_name="public",
+                table_name="orders",
+                table_owner="alice",
+                table_type="TABLE",
+                table_acl="alice=arwdRxtD/alice",
+                remarks=None,
+            ),
+        ],
+    )
+
+
+def _expected_export_dict(connector) -> dict:
+    """The dict `export`'s output is expected to match, derived independently
+    through the same public `Specification.from_redshift_connector` +
+    `to_dict` API `export` itself uses - this checks CLI wiring (the right
+    connector reaches the right loader and gets printed faithfully), not a
+    reimplementation of the serialization logic under test elsewhere."""
+    return Specification.from_redshift_connector(connector).to_dict()
+
+
+def test_export_yaml_matches_connector_state(
+    export_connector, patch_redshift_connector
+):
+    """export (default YAML) prints valid YAML matching the fake connector's
+    reported state."""
+    patch_redshift_connector(export_connector)
+
+    result = runner.invoke(app, ["export"])
+
+    assert result.exit_code == 0
+    parsed = yaml.safe_load(result.output)
+    assert parsed == _expected_export_dict(export_connector)
+
+
+def test_export_json_matches_connector_state(
+    export_connector, patch_redshift_connector
+):
+    """export --json prints valid JSON with content equivalent to the
+    default YAML case."""
+    patch_redshift_connector(export_connector)
+
+    result = runner.invoke(app, ["export", "--json"])
+
+    assert result.exit_code == 0
+    parsed = json.loads(result.output)
+    assert parsed == _expected_export_dict(export_connector)
+
+
+def test_export_yaml_and_json_are_equivalent(
+    export_connector, patch_redshift_connector
+):
+    """The YAML and --json outputs of export describe the same content."""
+    patch_redshift_connector(export_connector)
+
+    yaml_result = runner.invoke(app, ["export"])
+    json_result = runner.invoke(app, ["export", "--json"])
+
+    assert yaml.safe_load(yaml_result.output) == json.loads(json_result.output)
+
+
+def test_export_quiet_still_prints_the_spec(export_connector, patch_redshift_connector):
+    """--quiet on export suppresses only incidental/progress output, not the
+    exported spec itself - export's normal output *is* the spec, so it must
+    still appear."""
+    patch_redshift_connector(export_connector)
+
+    result = runner.invoke(app, ["export", "--quiet"])
+
+    assert result.exit_code == 0
+    parsed = yaml.safe_load(result.output)
+    assert parsed == _expected_export_dict(export_connector)
+
+
+class _ConnectionErrorConnector(db.RedshiftConnector):
+    """A fake connector whose `connect()` always raises `ConnectionError`,
+    used to exercise export's error path (mirrors the existing `--quiet`
+    regression tests for `validate` above)."""
+
+    @contextmanager
+    def connect(self):
+        raise ConnectionError("could not connect to Redshift")
+        yield self  # pragma: no cover - unreachable, keeps this a generator
+
+
+def test_export_quiet_connection_error_still_prints_error(
+    patch_redshift_connector,
+):
+    """--quiet still surfaces a genuine error (failure to connect) on
+    export, per --quiet's documented contract of suppressing only
+    incidental/progress output, never real errors."""
+    patch_redshift_connector(_ConnectionErrorConnector())
+
+    result = runner.invoke(app, ["export", "--quiet"])
+
+    assert result.exit_code == 1
+    assert result.output.strip() != ""
+    assert "Failed to connect to Redshift Database" in result.output
