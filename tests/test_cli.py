@@ -6,9 +6,31 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
+import redtape.connectors as db
 from redtape.cli import app
+from redtape.connectors import RedshiftConnector
 
 runner = CliRunner()
+
+
+@pytest.fixture
+def patch_redshift_connector(monkeypatch):
+    """Monkeypatch `RedshiftConnector.from_environ` to return a given fake.
+
+    Returns a function `patch(connector)` that wires `RedshiftConnector.
+    from_environ(...)` (however it is called - `redtape/cli.py`'s `run` and
+    `export` commands always call it with a single `environ=` kwarg) to
+    return the supplied fake connector instead of touching real environment
+    variables, a config file, or a network connection.
+    """
+
+    def patch(connector):
+        monkeypatch.setattr(
+            RedshiftConnector, "from_environ", lambda **kwargs: connector
+        )
+        return connector
+
+    return patch
 
 
 @pytest.fixture
@@ -197,3 +219,114 @@ def test_validate_fails_user_references_undeclared_role(tmp_path):
     )
     result = runner.invoke(app, ["validate", str(spec_path)])
     assert result.exit_code == 1
+
+
+@pytest.fixture
+def desired_spec_file(tmp_path):
+    """A desired spec: alice, in group analysts, with no table privileges."""
+    spec_path = tmp_path / "desired.yml"
+    spec_path.write_text(
+        yaml.safe_dump(
+            {
+                "users": [
+                    {
+                        "name": "alice",
+                        "is_superuser": False,
+                        "groups": ["analysts"],
+                    }
+                ],
+                "groups": [{"name": "analysts"}],
+            }
+        )
+    )
+    return spec_path
+
+
+def test_run_dry_reports_create_operations(
+    desired_spec_file, fake_connector_factory, patch_redshift_connector
+):
+    """run --dry prints the plan to create a not-yet-existing user and group."""
+    connector = patch_redshift_connector(fake_connector_factory())
+
+    result = runner.invoke(app, ["run", "--dry", str(desired_spec_file)])
+
+    assert result.exit_code == 0
+    assert "CREATE USER" in result.output
+    assert "CREATE GROUP" in result.output
+    assert connector.iter_users  # sanity: the fake was actually used
+
+
+def test_run_dry_reports_revoke_operation(
+    desired_spec_file, fake_connector_factory, patch_redshift_connector
+):
+    """run --dry prints a REVOKE for a privilege present in Redshift but not
+    in the desired spec, without crashing (the scenario that used to crash
+    before the REVOKE query builders were implemented, see #19)."""
+    current_connector = fake_connector_factory(
+        users=[
+            db.User(
+                usename="alice",
+                usesysid=1,
+                usecreatedb=False,
+                usesuper=False,
+                usecatupd=False,
+                valuntil=None,
+                useconfig=None,
+            ),
+        ],
+        groups=[
+            db.Group(groname="analysts", grosysid=2, grolist=[1]),
+        ],
+        tables=[
+            db.Table(
+                database_name="prod",
+                schema_name="public",
+                table_name="secret_table",
+                table_owner="alice",
+                table_type="TABLE",
+                table_acl="alice=arwdRxtD/alice",
+                remarks=None,
+            ),
+        ],
+    )
+    patch_redshift_connector(current_connector)
+
+    result = runner.invoke(app, ["run", "--dry", str(desired_spec_file)])
+
+    assert result.exit_code == 0
+    assert "REVOKE" in result.output
+    assert "secret_table" in result.output
+
+
+def test_run_dry_no_changes_needed(
+    fake_connector_factory, patch_redshift_connector, tmp_path
+):
+    """run --dry exits cleanly and prints nothing to do when current state
+    already matches the desired spec."""
+    spec_path = tmp_path / "matches_current.yml"
+    spec_path.write_text(
+        yaml.safe_dump(
+            {
+                "users": [{"name": "alice", "is_superuser": False, "groups": []}],
+                "groups": [],
+            }
+        )
+    )
+    connector = fake_connector_factory(
+        users=[
+            db.User(
+                usename="alice",
+                usesysid=1,
+                usecreatedb=False,
+                usesuper=False,
+                usecatupd=False,
+                valuntil=None,
+                useconfig=None,
+            ),
+        ],
+    )
+    patch_redshift_connector(connector)
+
+    result = runner.invoke(app, ["run", "--dry", str(spec_path)])
+
+    assert result.exit_code == 0
